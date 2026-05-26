@@ -31,7 +31,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -157,18 +156,10 @@ enum class KernelKind {
   HEAVY
 };
 
-enum class ResourceClass {
-  SMALL,
-  LARGE
-};
-
 struct TaskSpec {
   int id = -1;
   int proc_time = 0;
-
   KernelKind kind = KernelKind::LIGHT;
-  ResourceClass rclass = ResourceClass::SMALL;
-
   int work_units = 1000;
   std::vector<int> preds;
 };
@@ -202,11 +193,9 @@ std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
 
     if (t.proc_time > threshold) {
       s.kind = KernelKind::HEAVY;
-      s.rclass = ResourceClass::LARGE;
       s.work_units = std::max(1000, t.proc_time * 200);
     } else {
       s.kind = KernelKind::LIGHT;
-      s.rclass = ResourceClass::SMALL;
       s.work_units = std::max(200, std::max(1, t.proc_time) * 80);
     }
 
@@ -264,80 +253,33 @@ void launch_task_kernel(const TaskSpec& task,
   CUDA_CHECK(cudaGetLastError());
 }
 
-struct PartitionContext {
-  cudaStream_t stream {};
-  std::string label;
-};
-
 struct RuntimeResources {
-  PartitionContext baseline0;
-  PartitionContext baseline1;
-
-  PartitionContext small0;
-  PartitionContext small1;
-
-  PartitionContext large0;
-  PartitionContext large1;
+  cudaStream_t baseline0 {};
+  cudaStream_t baseline1 {};
 };
 
 RuntimeResources make_runtime_resources() {
   RuntimeResources rr;
 
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline0.stream));
-  rr.baseline0.label = "baseline0";
-
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline1.stream));
-  rr.baseline1.label = "baseline1";
-
-  CUDA_CHECK(cudaStreamCreate(&rr.small0.stream));
-  rr.small0.label = "small0";
-
-  CUDA_CHECK(cudaStreamCreate(&rr.small1.stream));
-  rr.small1.label = "small1";
-
-  CUDA_CHECK(cudaStreamCreate(&rr.large0.stream));
-  rr.large0.label = "large0";
-
-  CUDA_CHECK(cudaStreamCreate(&rr.large1.stream));
-  rr.large1.label = "large1";
+  CUDA_CHECK(cudaStreamCreate(&rr.baseline0));
+  CUDA_CHECK(cudaStreamCreate(&rr.baseline1));
 
   return rr;
 }
 
 void destroy_runtime_resources(RuntimeResources& rr) {
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline0.stream));
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline1.stream));
-
-  CUDA_CHECK(cudaStreamDestroy(rr.small0.stream));
-  CUDA_CHECK(cudaStreamDestroy(rr.small1.stream));
-
-  CUDA_CHECK(cudaStreamDestroy(rr.large0.stream));
-  CUDA_CHECK(cudaStreamDestroy(rr.large1.stream));
+  CUDA_CHECK(cudaStreamDestroy(rr.baseline0));
+  CUDA_CHECK(cudaStreamDestroy(rr.baseline1));
 }
 
 cudaStream_t select_baseline_stream(RuntimeResources& rr) {
   static std::atomic<int> turn{0};
 
   int v = turn.fetch_add(1, std::memory_order_relaxed);
-  return (v % 2 == 0) ? rr.baseline0.stream : rr.baseline1.stream;
+  return (v % 2 == 0) ? rr.baseline0 : rr.baseline1;
 }
 
-cudaStream_t select_partitioned_stream(const TaskSpec& t,
-                                       RuntimeResources& rr) {
-  static std::atomic<int> small_turn{0};
-  static std::atomic<int> large_turn{0};
-
-  if (t.rclass == ResourceClass::LARGE) {
-    int v = large_turn.fetch_add(1, std::memory_order_relaxed);
-    return (v % 2 == 0) ? rr.large0.stream : rr.large1.stream;
-  }
-
-  int v = small_turn.fetch_add(1, std::memory_order_relaxed);
-  return (v % 2 == 0) ? rr.small0.stream : rr.small1.stream;
-}
-
-BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
-                              bool resource_aware) {
+BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   BenchResult bench;
 
   auto total_start = Clock::now();
@@ -355,33 +297,27 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
   tf::Taskflow tf;
 
   std::unordered_map<int, tf::Task> task_nodes;
-  std::unordered_map<int, std::unique_ptr<cudaEvent_t>> done_events;
+  std::unordered_map<int, cudaEvent_t> done_events;
   std::unordered_map<int, cudaEvent_t> kernel_start_events;
   std::unordered_map<int, cudaEvent_t> kernel_stop_events;
 
   for (const auto& t : tasks) {
-    done_events[t.id] = std::make_unique<cudaEvent_t>();
-
-    CUDA_CHECK(cudaEventCreateWithFlags(
-      done_events[t.id].get(),
-      cudaEventDisableTiming
-    ));
-
+    cudaEvent_t done_ev;
     cudaEvent_t start_ev;
     cudaEvent_t stop_ev;
 
+    CUDA_CHECK(cudaEventCreateWithFlags(&done_ev, cudaEventDisableTiming));
     CUDA_CHECK(cudaEventCreate(&start_ev));
     CUDA_CHECK(cudaEventCreate(&stop_ev));
 
+    done_events.emplace(t.id, done_ev);
     kernel_start_events.emplace(t.id, start_ev);
     kernel_stop_events.emplace(t.id, stop_ev);
   }
 
   for (const auto& t : tasks) {
     tf::Task node = tf.emplace([&, t]() {
-      cudaStream_t stream = resource_aware
-        ? select_partitioned_stream(t, rr)
-        : select_baseline_stream(rr);
+      cudaStream_t stream = select_baseline_stream(rr);
 
       for (int pred : t.preds) {
         auto it = done_events.find(pred);
@@ -392,7 +328,7 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
           );
         }
 
-        CUDA_CHECK(cudaStreamWaitEvent(stream, *(it->second), 0));
+        CUDA_CHECK(cudaStreamWaitEvent(stream, it->second, 0));
       }
 
       CUDA_CHECK(cudaEventRecord(kernel_start_events.at(t.id), stream));
@@ -400,8 +336,7 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
       launch_task_kernel(t, dmem, N, stream);
 
       CUDA_CHECK(cudaEventRecord(kernel_stop_events.at(t.id), stream));
-
-      CUDA_CHECK(cudaEventRecord(*(done_events.at(t.id)), stream));
+      CUDA_CHECK(cudaEventRecord(done_events.at(t.id), stream));
     });
 
     node.name(std::to_string(t.id));
@@ -447,7 +382,7 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
   bench.gpu_kernel_ms = kernel_sum_ms;
 
   for (auto& [id, ev] : done_events) {
-    CUDA_CHECK(cudaEventDestroy(*ev));
+    CUDA_CHECK(cudaEventDestroy(ev));
   }
 
   for (auto& [id, ev] : kernel_start_events) {
@@ -497,9 +432,8 @@ void print_stg_summary(const std::vector<TaskSpec>& tasks) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 3) {
-    std::cerr << "Usage: " << argv[0]
-              << " input.stg [baseline|aware]\n";
+  if (argc < 2) {
+    std::cerr << "Usage: " << argv[0] << " input.stg\n";
     return 1;
   }
 
@@ -510,24 +444,10 @@ int main(int argc, char** argv) {
 
     print_stg_summary(specs);
 
-    std::string mode = argv[2];
+    BenchResult r = run_taskflow_cuda(specs);
 
-    if (mode == "baseline") {
-      BenchResult r = run_taskflow_cuda(specs, false);
-
-      std::cout << "mode: baseline\n";
-      print_result(r);
-    }
-    else if (mode == "aware") {
-      BenchResult r = run_taskflow_cuda(specs, true);
-
-      std::cout << "mode: resource-aware\n";
-      print_result(r);
-    }
-    else {
-      std::cerr << "mode must be baseline or aware\n";
-      return 1;
-    }
+    std::cout << "mode: baseline\n";
+    print_result(r);
   }
   catch (const std::exception& e) {
     std::cerr << "exception: " << e.what() << "\n";
