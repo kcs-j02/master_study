@@ -9,8 +9,8 @@
 // EOF
 
 // 実行はこれ！！！！
-// nvcc -O2 -std=c++20 taskflow_stg_cuda_demo.cu -I/home/kobayashi/taskflow -o taskflow_stg_cuda_demo
-// ./taskflow_stg_cuda_demo sample.stg baseline
+// nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main 
+// ./main sample.stg baseline
 // ./taskflow_stg_cuda_demo sample.stg aware
 
 // nsys profile ./taskflow_stg_cuda_demo sample.stg baseline
@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -39,10 +40,6 @@
 
 #include "bench_timer.hpp"
 
-// ============================================================
-// CUDA utilities
-// ============================================================
-
 #define CUDA_CHECK(expr)                                                      \
   do {                                                                        \
     cudaError_t _err = (expr);                                                \
@@ -52,14 +49,6 @@
       std::exit(EXIT_FAILURE);                                                \
     }                                                                         \
   } while (0)
-
-// ============================================================
-// STG data model
-// current STG without communication costs
-// line1: N
-// next N lines: task_id proc_time pred_count pred1 pred2 ...
-// lines beginning with # are info/comments
-// ============================================================
 
 struct StgTask {
   int id = -1;
@@ -147,7 +136,6 @@ StgGraph load_stg_without_comm(const std::string& path) {
     g.tasks.push_back(std::move(t));
   }
 
-  // task id uniqueness check
   std::vector<int> ids;
   ids.reserve(g.tasks.size());
 
@@ -163,11 +151,6 @@ StgGraph load_stg_without_comm(const std::string& path) {
 
   return g;
 }
-
-// ============================================================
-// Example resource classification
-// heavy/light split from processing time
-// ============================================================
 
 enum class KernelKind {
   LIGHT,
@@ -204,7 +187,7 @@ std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
 
   if (!positive_times.empty()) {
     std::sort(positive_times.begin(), positive_times.end());
-    threshold = positive_times[positive_times.size() / 2];  // median
+    threshold = positive_times[positive_times.size() / 2];
   }
 
   std::vector<TaskSpec> specs;
@@ -217,7 +200,6 @@ std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
     s.proc_time = t.proc_time;
     s.preds = t.preds;
 
-    // entry/exit dummy など proc_time=0 は軽い扱い
     if (t.proc_time > threshold) {
       s.kind = KernelKind::HEAVY;
       s.rclass = ResourceClass::LARGE;
@@ -233,10 +215,6 @@ std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
 
   return specs;
 }
-
-// ============================================================
-// CUDA kernels
-// ============================================================
 
 __global__ void light_kernel(float* data, int n, int iters) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -285,12 +263,6 @@ void launch_task_kernel(const TaskSpec& task,
 
   CUDA_CHECK(cudaGetLastError());
 }
-
-// ============================================================
-// resource allocation abstraction
-// 今は stream 分離
-// 本物の Green Context を差し込むならここを置換
-// ============================================================
 
 struct PartitionContext {
   cudaStream_t stream {};
@@ -364,10 +336,6 @@ cudaStream_t select_partitioned_stream(const TaskSpec& t,
   return (v % 2 == 0) ? rr.small0.stream : rr.small1.stream;
 }
 
-// ============================================================
-// execution
-// ============================================================
-
 BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
                               bool resource_aware) {
   BenchResult bench;
@@ -386,19 +354,11 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
   tf::Executor executor(8);
   tf::Taskflow tf;
 
-  // task id -> tf::Task
   std::unordered_map<int, tf::Task> task_nodes;
-
-  // task id -> completion event
   std::unordered_map<int, std::unique_ptr<cudaEvent_t>> done_events;
-
-  // task id -> kernel timing event
   std::unordered_map<int, cudaEvent_t> kernel_start_events;
   std::unordered_map<int, cudaEvent_t> kernel_stop_events;
 
-  // ----------------------------------------
-  // 1. 各 task 用の CUDA event を先に作る
-  // ----------------------------------------
   for (const auto& t : tasks) {
     done_events[t.id] = std::make_unique<cudaEvent_t>();
 
@@ -417,16 +377,12 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
     kernel_stop_events.emplace(t.id, stop_ev);
   }
 
-  // ----------------------------------------
-  // 2. STG の各 task から tf::Task を作る
-  // ----------------------------------------
   for (const auto& t : tasks) {
     tf::Task node = tf.emplace([&, t]() {
       cudaStream_t stream = resource_aware
         ? select_partitioned_stream(t, rr)
         : select_baseline_stream(rr);
 
-      // 先行 task の完了を CUDA stream 上で待つ
       for (int pred : t.preds) {
         auto it = done_events.find(pred);
 
@@ -439,16 +395,12 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
         CUDA_CHECK(cudaStreamWaitEvent(stream, *(it->second), 0));
       }
 
-      // kernel 開始 event
       CUDA_CHECK(cudaEventRecord(kernel_start_events.at(t.id), stream));
 
-      // この task の kernel を launch
       launch_task_kernel(t, dmem, N, stream);
 
-      // kernel 終了 event
       CUDA_CHECK(cudaEventRecord(kernel_stop_events.at(t.id), stream));
 
-      // この task の完了 event を記録
       CUDA_CHECK(cudaEventRecord(*(done_events.at(t.id)), stream));
     });
 
@@ -456,9 +408,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
     task_nodes.emplace(t.id, node);
   }
 
-  // ----------------------------------------
-  // 3. STG の依存関係 pred -> task を tf に張る
-  // ----------------------------------------
   for (const auto& t : tasks) {
     for (int pred : t.preds) {
       auto pred_it = task_nodes.find(pred);
@@ -472,9 +421,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
     }
   }
 
-  // ----------------------------------------
-  // 4. GPU submit + wait の時間を測定
-  // ----------------------------------------
   auto submit_start = Clock::now();
 
   executor.run(tf).wait();
@@ -484,9 +430,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
 
   bench.gpu_submit_wait_ms = elapsed_ms(submit_start, submit_end);
 
-  // ----------------------------------------
-  // 5. GPU kernel 時間を集計
-  // ----------------------------------------
   double kernel_sum_ms = 0.0;
 
   for (const auto& t : tasks) {
@@ -503,9 +446,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
 
   bench.gpu_kernel_ms = kernel_sum_ms;
 
-  // ----------------------------------------
-  // 6. 後始末
-  // ----------------------------------------
   for (auto& [id, ev] : done_events) {
     CUDA_CHECK(cudaEventDestroy(*ev));
   }
@@ -526,7 +466,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
 
   bench.total_ms = elapsed_ms(total_start, total_end);
 
-  // 今回この4項目は測定しないので 0.0 のまま
   bench.task_DFG_construction_ms = 0.0;
   bench.task_levelization_ms = 0.0;
   bench.task_assignment_ms = 0.0;
@@ -534,10 +473,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks,
 
   return bench;
 }
-
-// ============================================================
-// dump summary
-// ============================================================
 
 void print_stg_summary(const std::vector<TaskSpec>& tasks) {
   int heavy = 0;
@@ -561,10 +496,6 @@ void print_stg_summary(const std::vector<TaskSpec>& tasks) {
   std::cout << "sum_proc_time : " << total_proc << "\n";
 }
 
-// ============================================================
-// main
-// ============================================================
-
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0]
@@ -573,10 +504,8 @@ int main(int argc, char** argv) {
   }
 
   try {
-    // 1. STGファイルを読み込む
     StgGraph g = load_stg_without_comm(argv[1]);
 
-    // 2. STGを TaskSpec の配列に変換する
     auto specs = make_task_specs_from_stg(g);
 
     print_stg_summary(specs);
