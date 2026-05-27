@@ -11,16 +11,17 @@
 // 実行はこれ！！！！
 // nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main 
 // ./main sample.stg baseline
-// ./taskflow_stg_cuda_demo sample.stg aware
 
-// nsys profile ./taskflow_stg_cuda_demo sample.stg baseline
+// nsys profile ./main sample.stg baseline
 
-// kobayashi@h100:~/main/STG$ nsys profile \
+// GPU使用率
+// nsys profile \
+//   --force-overwrite true \
 //   --trace=cuda,nvtx,osrt \
 //   --gpu-metrics-devices=0 \
 //   --gpu-metrics-frequency=10000 \
-//   -o stg_baseline \
-//   ./taskflow_stg_cuda_demo sample.stg baseline
+//   -o stg_profile \
+//   ./main sample.stg
 
 #include <cuda_runtime.h>
 #include <taskflow/taskflow.hpp>
@@ -39,6 +40,13 @@
 
 #include "bench_timer.hpp"
 
+// 追加
+#include "common_types.hpp"
+#include "task_DFG_construction.hpp"
+#include "task_levelization.hpp"
+#include "task_assignment.hpp"
+#include "resource_allocation.hpp"
+
 #define CUDA_CHECK(expr)                                                      \
   do {                                                                        \
     cudaError_t _err = (expr);                                                \
@@ -49,16 +57,7 @@
     }                                                                         \
   } while (0)
 
-struct StgTask {
-  int id = -1;
-  int proc_time = 0;
-  std::vector<int> preds;
-};
 
-struct StgGraph {
-  int num_tasks = 0;
-  std::vector<StgTask> tasks;
-};
 
 static inline std::string trim(const std::string& s) {
   const auto b = s.find_first_not_of(" \t\r\n");
@@ -151,18 +150,7 @@ StgGraph load_stg_without_comm(const std::string& path) {
   return g;
 }
 
-enum class KernelKind {
-  LIGHT,
-  HEAVY
-};
 
-struct TaskSpec {
-  int id = -1;
-  int proc_time = 0;
-  KernelKind kind = KernelKind::LIGHT;
-  int work_units = 1000;
-  std::vector<int> preds;
-};
 
 std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
   std::vector<int> positive_times;
@@ -253,36 +241,43 @@ void launch_task_kernel(const TaskSpec& task,
   CUDA_CHECK(cudaGetLastError());
 }
 
-struct RuntimeResources {
-  cudaStream_t baseline0 {};
-  cudaStream_t baseline1 {};
-};
 
-RuntimeResources make_runtime_resources() {
-  RuntimeResources rr;
 
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline0));
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline1));
 
-  return rr;
-}
 
-void destroy_runtime_resources(RuntimeResources& rr) {
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline0));
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline1));
-}
 
-cudaStream_t select_baseline_stream(RuntimeResources& rr) {
-  static std::atomic<int> turn{0};
-
-  int v = turn.fetch_add(1, std::memory_order_relaxed);
-  return (v % 2 == 0) ? rr.baseline0 : rr.baseline1;
-}
-
+// 実行
 BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   BenchResult bench;
 
   auto total_start = Clock::now();
+  
+  // 追加
+  TaskDFG dfg;
+  {
+    ScopedTimer timer(bench.task_DFG_construction_ms);
+    dfg = task_DFG_construction(tasks);
+  }
+
+  TaskLevels levels;
+
+  {
+    ScopedTimer timer(bench.task_levelization_ms);
+    levels = task_levelization(dfg);
+  }
+
+  int stream_count = 0;
+
+  {
+    ScopedTimer timer(bench.task_assignment_ms);
+
+    constexpr int max_stream_count = 5;
+    stream_count = task_assignment(levels, dfg, max_stream_count);
+  }
+
+  // check_nodes(dfg);
+
+  // 
 
   constexpr int N = 1 << 20;
 
@@ -291,7 +286,13 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   CUDA_CHECK(cudaMalloc(&dmem, N * sizeof(float)));
   CUDA_CHECK(cudaMemset(dmem, 0, N * sizeof(float)));
 
-  RuntimeResources rr = make_runtime_resources();
+
+  RuntimeResources rr;
+
+  {
+    ScopedTimer timer(bench.resource_allocation_ms);
+    rr = make_runtime_resources(dfg, stream_count);
+  }
 
   tf::Executor executor(8);
   tf::Taskflow tf;
@@ -317,7 +318,8 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
 
   for (const auto& t : tasks) {
     tf::Task node = tf.emplace([&, t]() {
-      cudaStream_t stream = select_baseline_stream(rr);
+      const NodeInfo& info = dfg.nodes.at(t.id);
+      cudaStream_t stream = get_stream_by_id(rr, info.stream_id);
 
       for (int pred : t.preds) {
         auto it = done_events.find(pred);
@@ -400,11 +402,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   auto total_end = Clock::now();
 
   bench.total_ms = elapsed_ms(total_start, total_end);
-
-  bench.task_DFG_construction_ms = 0.0;
-  bench.task_levelization_ms = 0.0;
-  bench.task_assignment_ms = 0.0;
-  bench.resource_allocation_ms = 0.0;
 
   return bench;
 }

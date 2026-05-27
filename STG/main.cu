@@ -11,16 +11,17 @@
 // 実行はこれ！！！！
 // nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main 
 // ./main sample.stg baseline
-// ./taskflow_stg_cuda_demo sample.stg aware
 
-// nsys profile ./taskflow_stg_cuda_demo sample.stg baseline
+// nsys profile ./main sample.stg baseline
 
-// kobayashi@h100:~/main/STG$ nsys profile \
+// GPU使用率
+// nsys profile \
+//   --force-overwrite true \
 //   --trace=cuda,nvtx,osrt \
 //   --gpu-metrics-devices=0 \
 //   --gpu-metrics-frequency=10000 \
-//   -o stg_baseline \
-//   ./taskflow_stg_cuda_demo sample.stg baseline
+//   -o stg_profile \
+//   ./main sample.stg
 
 #include <cuda_runtime.h>
 #include <taskflow/taskflow.hpp>
