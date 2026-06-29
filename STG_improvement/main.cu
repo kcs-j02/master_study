@@ -266,13 +266,13 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
     levels = task_levelization(dfg);
   }
 
-  int stream_count = 0;
+  int stream_count;
 
   {
     ScopedTimer timer(bench.task_assignment_ms);
 
     constexpr int max_stream_count = 5;
-    stream_count = task_assignment(levels, dfg, max_stream_count);
+    stream_count = task_assignment(levels, dfg, max_stream_count-1);
   }
 
   // check_nodes(dfg);
@@ -291,7 +291,8 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
 
   {
     ScopedTimer timer(bench.resource_allocation_ms);
-    rr = resource_allocation(dfg, stream_count);
+    // rr = resource_allocation(dfg, stream_count);
+    rr = resource_allocation(dfg, tasks, stream_count);
   }
 
   tf::Executor executor(8);

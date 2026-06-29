@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "common_types.hpp"
 
@@ -56,8 +57,10 @@ inline void check_resource(int available_sm, int reserve_sm, int unit, int min_g
   }
 }
 
+// 実行
 inline RuntimeResources resource_allocation(
     const TaskDFG& dfg,
+    const std::vector<TaskSpec>& tasks,
     int stream_count,
     int gpu_device_index = 0,
     int reserve_sm = 10
@@ -75,12 +78,33 @@ inline RuntimeResources resource_allocation(
   rr.sm_count_each_stream.resize(stream_count, 0);
   rr.priority_each_stream.resize(stream_count, 0);
 
-  // 1. streamごとの優先度を作る
-  // priority = indeg + 1
-  // indeg=0 のsource taskにも最低優先度を与える
+  // task_id -> order_count
+  // ここでは work_units をタスクのオーダー数として使う
+  std::unordered_map<int, long long> order_count_by_task;
+
+  for (const auto& t : tasks) {
+    long long order_count = std::max(1, t.work_units);
+
+    // heavy_kernel は light_kernel より1ループあたり演算が多い
+    if (t.kind == KernelKind::HEAVY) {
+      order_count *= 3;
+    }
+
+    order_count_by_task[t.id] = order_count;
+  }
+
+  // streamごとのpriorityを作る
   for (const auto& [task_id, ni] : dfg.nodes) {
     if (ni.stream_id >= 0 && ni.stream_id < stream_count) {
-      rr.priority_each_stream[ni.stream_id] += static_cast<long long>(ni.indeg + 1);
+      auto it = order_count_by_task.find(task_id);
+
+      if (it == order_count_by_task.end()) {
+        throw std::runtime_error(
+            "task id not found in tasks: " + std::to_string(task_id)
+        );
+      }
+
+      rr.priority_each_stream[ni.stream_id] += it->second;
     }
   }
 
@@ -93,7 +117,7 @@ inline RuntimeResources resource_allocation(
     throw std::runtime_error("total priority is zero");
   }
 
-  // 2. GPUのSM資源情報を取得
+  // GPUのSM資源情報を取得
   cudaDevResource initial_sm_resource {};
   RA_CUDA_CHECK(cudaDeviceGetDevResource(
       gpu_device_index,
@@ -123,7 +147,7 @@ inline RuntimeResources resource_allocation(
     );
   }
 
-  // 3. 全streamに最低SM数を割り当てる
+  // 全streamに最低SM数を割り当てる
   for (int i = 0; i < stream_count; ++i) {
     rr.sm_count_each_stream[i] = min_group_sm;
   }
@@ -131,7 +155,7 @@ inline RuntimeResources resource_allocation(
   int remaining_sm = allocatable_sm - stream_count * min_group_sm;
   int remaining_chunks = remaining_sm / unit;
 
-  // 4. 優先度に応じて残りSMを配分
+  // priority/order_count が大きいstreamへ残りSMを配分
   for (int c = 0; c < remaining_chunks; ++c) {
     int best_stream = 0;
     long double best_score = -1.0;
@@ -150,9 +174,9 @@ inline RuntimeResources resource_allocation(
     rr.sm_count_each_stream[best_stream] += unit;
   }
 
-  // check_resource(available_sm, reserve_sm, unit, min_group_sm, rr, stream_count);
+  // check_resource
+  check_resource(available_sm, reserve_sm, unit, min_group_sm, rr,  stream_count);
 
-  // 5. SM資源をstream_count個に分割
   std::vector<cudaDevResource> split_sm_resources(stream_count);
   std::vector<cudaDevSmResourceGroupParams> group_params(stream_count);
 
@@ -174,7 +198,6 @@ inline RuntimeResources resource_allocation(
       group_params.data()
   ));
 
-  // 6. resource descriptor作成
   for (int i = 0; i < stream_count; ++i) {
     RA_CUDA_CHECK(cudaDevResourceGenerateDesc(
         &rr.resource_descs[i],
@@ -183,7 +206,6 @@ inline RuntimeResources resource_allocation(
     ));
   }
 
-  // 7. Green Context作成
   for (int i = 0; i < stream_count; ++i) {
     RA_CUDA_CHECK(cudaGreenCtxCreate(
         &rr.green_ctxs[i],
@@ -193,7 +215,6 @@ inline RuntimeResources resource_allocation(
     ));
   }
 
-  // 8. Green Contextに紐づいたstreamを作成
   for (int i = 0; i < stream_count; ++i) {
     RA_CUDA_CHECK(cudaExecutionCtxStreamCreate(
         &rr.streams[i],
