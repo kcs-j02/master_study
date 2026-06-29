@@ -6,12 +6,14 @@
 
 #include "common_types.hpp"
 #include "task_levelization.hpp"
+#include <iostream>
 
 inline int decide_stream_count(const TaskLevels& levels, int max_stream_count) {
   int max_width = 0;
 
   for (const auto& level : levels) {
     max_width = std::max(max_width, static_cast<int>(level.size()));
+    std::cout << "max_width: " << max_width << std::endl;
   }
 
   int stream_count = std::min(max_width, max_stream_count);
