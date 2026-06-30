@@ -9,6 +9,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include <chrono>
+
 #include "common_types.hpp"
 
 #define RA_CUDA_CHECK(expr)                                                   \
@@ -63,7 +65,7 @@ inline RuntimeResources resource_allocation(
     const std::vector<TaskSpec>& tasks,
     int stream_count,
     int gpu_device_index = 0,
-    int reserve_sm = 10
+    int reserve_sm = 8
 ) {
   if (stream_count <= 0) {
     throw std::runtime_error("stream_count must be positive");
@@ -167,7 +169,7 @@ inline RuntimeResources resource_allocation(
   }
 
   // check_resource
-  // check_resource(available_sm, reserve_sm, unit, min_group_sm, rr,  stream_count);
+  check_resource(available_sm, reserve_sm, unit, min_group_sm, rr,  stream_count);
 
   std::vector<cudaDevResource> split_sm_resources(stream_count);
   std::vector<cudaDevSmResourceGroupParams> group_params(stream_count);
@@ -180,6 +182,10 @@ inline RuntimeResources resource_allocation(
     group_params[i].preferredCoscheduledSmCount = 0;
     group_params[i].flags = 0;
   }
+
+  RA_CUDA_CHECK(cudaDeviceSynchronize());
+
+  auto t0 = std::chrono::high_resolution_clock::now();
 
   RA_CUDA_CHECK(cudaDevSmResourceSplit(
       split_sm_resources.data(),
@@ -215,6 +221,13 @@ inline RuntimeResources resource_allocation(
         0
     ));
   }
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  double gc_setup_ms =
+      std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+  std::cout << "[GC setup time] " << gc_setup_ms << " ms\n";
 
   return rr;
 }
