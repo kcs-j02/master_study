@@ -59,13 +59,14 @@ inline void check_resource(int available_sm, int reserve_sm, int unit, int min_g
   }
 }
 
+
 // 実行
 inline RuntimeResources resource_allocation(
     const TaskDFG& dfg,
     const std::vector<TaskSpec>& tasks,
     int stream_count,
     int gpu_device_index = 0,
-    int reserve_sm = 8
+    int reserve_sm = 8 //残しておくSM
 ) {
   if (stream_count <= 0) {
     throw std::runtime_error("stream_count must be positive");
@@ -148,6 +149,10 @@ inline RuntimeResources resource_allocation(
 
   int remaining_sm = allocatable_sm - stream_count * min_group_sm;
   int remaining_chunks = remaining_sm / unit;
+
+  // reserve_sm = reserve_sm + remaining_chunks * unit - remaining_sm;
+
+  // cout << "reserve_sm = " << reserve_sm << endl;
 
   // priority/order_count が大きいstreamへ残りSMを配分
   for (int c = 0; c < remaining_chunks; ++c) {
