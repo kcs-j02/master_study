@@ -1,3 +1,5 @@
+
+
 // kobayashi@h100:~/main/STG$ cat > sample.stg << 'EOF'
 // 6
 // 0 0 0
@@ -42,6 +44,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -251,6 +254,44 @@ void launch_task_kernel(const TaskSpec& task,
   CUDA_CHECK(cudaGetLastError());
 }
 
+// 全タスクを単一ストリームで逐次実行した場合のGPU実行時間を計測する。
+// メモリ確保・初期化・イベント生成などの時間は GPU_KERNEL_MS に含めない。
+double measure_sequential_kernel_ms(const std::vector<TaskSpec>& tasks, int n) {
+  float* dmem = nullptr;
+  cudaStream_t stream = nullptr;
+  cudaEvent_t start_event = nullptr;
+  cudaEvent_t stop_event = nullptr;
+
+  CUDA_CHECK(cudaMalloc(&dmem, n * sizeof(float)));
+  CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  CUDA_CHECK(cudaEventCreate(&start_event));
+  CUDA_CHECK(cudaEventCreate(&stop_event));
+
+  // 初期化処理は計測対象外にする。
+  CUDA_CHECK(cudaMemsetAsync(dmem, 0, n * sizeof(float), stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  CUDA_CHECK(cudaEventRecord(start_event, stream));
+
+  // 同一ストリームへの投入なので、tasks の順番で必ず逐次実行される。
+  for (const auto& task : tasks) {
+    launch_task_kernel(task, dmem, n, stream);
+  }
+
+  CUDA_CHECK(cudaEventRecord(stop_event, stream));
+  CUDA_CHECK(cudaEventSynchronize(stop_event));
+
+  float elapsed = 0.0f;
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed, start_event, stop_event));
+
+  CUDA_CHECK(cudaEventDestroy(start_event));
+  CUDA_CHECK(cudaEventDestroy(stop_event));
+  CUDA_CHECK(cudaStreamDestroy(stream));
+  CUDA_CHECK(cudaFree(dmem));
+
+  return static_cast<double>(elapsed);
+}
+
 
 
 
@@ -280,10 +321,18 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
 
   {
     ScopedTimer timer(bench.task_assignment_ms);
-
+    
     constexpr int max_stream_count = 5;
-    // std::cout << "max_stream_count " << max_stream_count << std::endl;
-    stream_count = task_assignment(levels, dfg, max_stream_count);
+    
+    stream_count = task_assignment(
+      levels,
+      dfg,
+      tasks,
+      max_stream_count
+    );
+    std::cout << "max_stream_count " << max_stream_count << std::endl;
+    std::cout << "stream_count " << stream_count << std::endl;
+
   }
 
   // check_nodes(dfg);
@@ -314,12 +363,27 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   std::unordered_map<int, cudaEvent_t> kernel_start_events;
   std::unordered_map<int, cudaEvent_t> kernel_stop_events;
 
+  // 全ストリーム上のイベント時刻を比較するための共通基準時刻。
+  cudaStream_t timing_stream = nullptr;
+  cudaEvent_t origin_event = nullptr;
+
+  CUDA_CHECK(cudaStreamCreateWithFlags(
+    &timing_stream,
+    cudaStreamNonBlocking
+  ));
+  CUDA_CHECK(cudaEventCreate(&origin_event));
+  CUDA_CHECK(cudaEventRecord(origin_event, timing_stream));
+  CUDA_CHECK(cudaEventSynchronize(origin_event));
+
   for (const auto& t : tasks) {
     cudaEvent_t done_ev;
     cudaEvent_t start_ev;
     cudaEvent_t stop_ev;
 
-    CUDA_CHECK(cudaEventCreateWithFlags(&done_ev, cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(
+      &done_ev,
+      cudaEventDisableTiming
+    ));
     CUDA_CHECK(cudaEventCreate(&start_ev));
     CUDA_CHECK(cudaEventCreate(&stop_ev));
 
@@ -345,11 +409,12 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
         CUDA_CHECK(cudaStreamWaitEvent(stream, it->second, 0));
       }
 
+      // start/stop はGPU上のカーネル実行区間だけを測る。
       CUDA_CHECK(cudaEventRecord(kernel_start_events.at(t.id), stream));
-
       launch_task_kernel(t, dmem, N, stream);
-
       CUDA_CHECK(cudaEventRecord(kernel_stop_events.at(t.id), stream));
+
+      // 後続タスクは、このカーネルの完了を待つ。
       CUDA_CHECK(cudaEventRecord(done_events.at(t.id), stream));
     });
 
@@ -370,10 +435,53 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
     }
   }
 
-  auto submit_start = Clock::now();
-
   executor.run(tf).wait();
 
+  // Taskflow の完了はCUDA処理の投入完了であり、GPU完了ではない。
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  // GPU_SUBMIT_WAIT_MS:
+  // 並列実行時の「最初のカーネル開始」から
+  // 「最後のカーネル終了」までのGPUタイムライン上の時間。
+  // CPU側のTaskflow処理や、最初のカーネル投入前の時間は含めない。
+  if (tasks.empty()) {
+    bench.gpu_submit_wait_ms = 0.0;
+  } else {
+    double first_kernel_start_ms =
+      std::numeric_limits<double>::max();
+    double last_kernel_stop_ms = 0.0;
+
+    for (const auto& t : tasks) {
+      float start_from_origin_ms = 0.0f;
+      float stop_from_origin_ms = 0.0f;
+
+      CUDA_CHECK(cudaEventElapsedTime(
+        &start_from_origin_ms,
+        origin_event,
+        kernel_start_events.at(t.id)
+      ));
+
+      CUDA_CHECK(cudaEventElapsedTime(
+        &stop_from_origin_ms,
+        origin_event,
+        kernel_stop_events.at(t.id)
+      ));
+
+      first_kernel_start_ms = std::min(
+        first_kernel_start_ms,
+        static_cast<double>(start_from_origin_ms)
+      );
+
+      last_kernel_stop_ms = std::max(
+        last_kernel_stop_ms,
+        static_cast<double>(stop_from_origin_ms)
+      );
+    }
+
+    bench.gpu_submit_wait_ms =
+      last_kernel_stop_ms - first_kernel_start_ms;
+  }
+    
   print_runtime_resource_state(rr, stream_count, "before GC release");
 
   release_finished_gc_streams(rr, stream_count);
@@ -385,28 +493,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   } else {
     std::cout << "[CHECK] some GC streams are still alive\n";
   }
-
-  CUDA_CHECK(cudaDeviceSynchronize());
-
-  auto submit_end = Clock::now();
-
-  bench.gpu_submit_wait_ms = elapsed_ms(submit_start, submit_end);
-
-  double kernel_sum_ms = 0.0;
-
-  for (const auto& t : tasks) {
-    float ms = 0.0f;
-
-    CUDA_CHECK(cudaEventElapsedTime(
-      &ms,
-      kernel_start_events.at(t.id),
-      kernel_stop_events.at(t.id)
-    ));
-
-    kernel_sum_ms += static_cast<double>(ms);
-  }
-
-  bench.gpu_kernel_ms = kernel_sum_ms;
 
   for (auto& [id, ev] : done_events) {
     CUDA_CHECK(cudaEventDestroy(ev));
@@ -420,6 +506,9 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
     CUDA_CHECK(cudaEventDestroy(ev));
   }
 
+  CUDA_CHECK(cudaEventDestroy(origin_event));
+  CUDA_CHECK(cudaStreamDestroy(timing_stream));
+
   destroy_runtime_resources(rr);
 
   CUDA_CHECK(cudaFree(dmem));
@@ -427,6 +516,10 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
   auto total_end = Clock::now();
 
   bench.total_ms = elapsed_ms(total_start, total_end);
+
+  // 並列実行本体とは別に、全カーネルを単一ストリームで実測する。
+  // この追加ベンチマーク時間は TOTAL_MS には含めない。
+  bench.gpu_kernel_ms = measure_sequential_kernel_ms(tasks, N);
 
   return bench;
 }

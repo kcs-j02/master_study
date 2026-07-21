@@ -1,0 +1,998 @@
+
+
+// kobayashi@h100:~/main/STG$ cat > sample.stg << 'EOF'
+// 6
+// 0 0 0
+// 1 10 1 0
+// 2 30 1 0
+// 3 5 1 1
+// 4 40 2 1 2
+// 5 0 2 3 4
+// EOF
+
+// 実行はこれ！！！！
+// rm -rf main
+// nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main 
+// ./main sample.stg baseline
+
+// nsys profile ./main sample.stg baseline
+
+// GPU使用率
+// nsys profile \
+//   --force-overwrite true \
+//   --trace=cuda,nvtx,osrt \
+//   --gpu-metrics-devices=0 \
+//   --gpu-metrics-frequency=10000 \
+//   -o stg_profile \
+//   ./main sample.stg
+
+// mkdir -p $HOME/tmp/nsys
+// TMPDIR=$HOME/tmp/nsys nsys profile \
+//   --force-overwrite true \
+//   --trace=cuda,nvtx,osrt \
+//   --gpu-metrics-devices=0 \
+//   --gpu-metrics-frequency=10000 \
+//   -o stg_profile \
+//   ./main sample.stg
+
+#include <cuda_runtime.h>
+#include <taskflow/taskflow.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "bench_timer.hpp"
+
+// 追加
+#include "common_types.hpp"
+#include "task_DFG_construction.hpp"
+#include "task_levelization.hpp"
+#include "task_assignment.hpp"
+#include "resource_allocation.hpp"
+
+#define CUDA_CHECK(expr)                                                      \
+  do {                                                                        \
+    cudaError_t _err = (expr);                                                \
+    if (_err != cudaSuccess) {                                                \
+      std::cerr << "CUDA error: " << cudaGetErrorString(_err)                 \
+                << " at " << __FILE__ << ":" << __LINE__ << std::endl;        \
+      std::exit(EXIT_FAILURE);                                                \
+    }                                                                         \
+  } while (0)
+
+
+
+static inline std::string trim(const std::string& s) {
+  const auto b = s.find_first_not_of(" \t\r\n");
+  if (b == std::string::npos) return "";
+
+  const auto e = s.find_last_not_of(" \t\r\n");
+  return s.substr(b, e - b + 1);
+}
+
+StgGraph load_stg_without_comm(const std::string& path) {
+  std::ifstream ifs(path);
+  if (!ifs) {
+    throw std::runtime_error("failed to open STG file: " + path);
+  }
+
+  std::vector<std::string> raw_lines;
+  std::string line;
+
+  while (std::getline(ifs, line)) {
+    line = trim(line);
+    if (line.empty()) continue;
+    if (!line.empty() && line[0] == '#') continue;
+
+    raw_lines.push_back(line);
+  }
+
+  if (raw_lines.empty()) {
+    throw std::runtime_error("empty STG file: " + path);
+  }
+
+  StgGraph g;
+
+  {
+    std::istringstream iss(raw_lines[0]);
+    if (!(iss >> g.num_tasks)) {
+      throw std::runtime_error("failed to parse number of tasks");
+    }
+  }
+
+  if (static_cast<int>(raw_lines.size()) < 1 + g.num_tasks) {
+    throw std::runtime_error("STG file has fewer task lines than expected");
+  }
+
+  g.tasks.reserve(g.num_tasks);
+
+  for (int i = 0; i < g.num_tasks; ++i) {
+    std::istringstream iss(raw_lines[1 + i]);
+
+    StgTask t;
+    int pred_count = 0;
+
+    if (!(iss >> t.id >> t.proc_time >> pred_count)) {
+      throw std::runtime_error(
+        "failed to parse task header at task-line index " + std::to_string(i)
+      );
+    }
+
+    if (pred_count < 0) {
+      throw std::runtime_error(
+        "negative predecessor count at task " + std::to_string(t.id)
+      );
+    }
+
+    t.preds.resize(pred_count);
+
+    for (int k = 0; k < pred_count; ++k) {
+      if (!(iss >> t.preds[k])) {
+        throw std::runtime_error(
+          "failed to parse predecessor list at task " + std::to_string(t.id)
+        );
+      }
+    }
+
+    g.tasks.push_back(std::move(t));
+  }
+
+  std::vector<int> ids;
+  ids.reserve(g.tasks.size());
+
+  for (const auto& t : g.tasks) {
+    ids.push_back(t.id);
+  }
+
+  std::sort(ids.begin(), ids.end());
+
+  if (std::adjacent_find(ids.begin(), ids.end()) != ids.end()) {
+    throw std::runtime_error("duplicate task ids found in STG");
+  }
+
+  return g;
+}
+
+
+
+std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
+  std::vector<int> positive_times;
+  positive_times.reserve(g.tasks.size());
+
+  for (const auto& t : g.tasks) {
+    if (t.proc_time > 0) {
+      positive_times.push_back(t.proc_time);
+    }
+  }
+
+  int threshold = 1;
+
+  if (!positive_times.empty()) {
+    std::sort(positive_times.begin(), positive_times.end());
+    threshold = positive_times[positive_times.size() / 2];
+  }
+
+  std::vector<TaskSpec> specs;
+  specs.reserve(g.tasks.size());
+
+  for (const auto& t : g.tasks) {
+    TaskSpec s;
+
+    s.id = t.id;
+    s.proc_time = t.proc_time;
+    s.preds = t.preds;
+
+    if (t.proc_time > threshold) {
+      s.kind = KernelKind::HEAVY;
+      s.work_units = std::max(1000, t.proc_time * 200);
+    } else {
+      s.kind = KernelKind::LIGHT;
+      s.work_units = std::max(200, std::max(1, t.proc_time) * 80);
+    }
+
+    specs.push_back(std::move(s));
+  }
+
+  return specs;
+}
+
+__global__ void light_kernel(float* data, int n, int iters) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (idx < n) {
+    float x = data[idx];
+
+    #pragma unroll 1
+    for (int i = 0; i < iters; ++i) {
+      x = x * 1.000001f + 0.00001f;
+    }
+
+    data[idx] = x;
+  }
+}
+
+__global__ void heavy_kernel(float* data, int n, int iters) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (idx < n) {
+    float x = data[idx];
+
+    #pragma unroll 1
+    for (int i = 0; i < iters; ++i) {
+      x = x * 1.000001f + 0.00001f;
+      x = x * 0.999999f + 0.00002f;
+      x = x * 1.0000003f - 0.00001f;
+    }
+
+    data[idx] = x;
+  }
+}
+
+void launch_task_kernel(const TaskSpec& task,
+                        float* dmem,
+                        int n,
+                        cudaStream_t stream) {
+  dim3 block(256);
+  dim3 grid((n + block.x - 1) / block.x);
+
+  if (task.kind == KernelKind::HEAVY) {
+    heavy_kernel<<<grid, block, 0, stream>>>(dmem, n, task.work_units);
+  } else {
+    light_kernel<<<grid, block, 0, stream>>>(dmem, n, task.work_units);
+  }
+
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// 実行
+BenchResult run_taskflow_cuda(
+    const std::vector<TaskSpec>& tasks
+) {
+  BenchResult bench;
+  const auto total_start = Clock::now();
+
+  // 1. DFG構築
+  TaskDFG dfg;
+  {
+    ScopedTimer timer(bench.task_DFG_construction_ms);
+    dfg = task_DFG_construction(tasks);
+  }
+
+  // 2. レベル化
+  TaskLevels levels;
+  {
+    ScopedTimer timer(bench.task_levelization_ms);
+    levels = task_levelization(dfg);
+  }
+
+  constexpr int max_stream_count = 5;
+  constexpr int normal_stream_percent = 70;
+
+  /*
+   * 3. stream 0へSMを優先的に残した候補だけを作る。
+   *
+   * stream 0 : primary context上の通常stream
+   * stream 1以降 : Green Context
+   *
+   * 各候補を依存関係込みでシミュレーションし、
+   * 予測makespanが最小のstream数を選択する。
+   */
+  StreamConfigurationDecision stream_decision;
+  int scheduling_reference_sm = 0;
+
+  {
+    ScopedTimer timer(bench.resource_allocation_ms);
+
+    const SmPartitionInfo partition_info =
+        query_sm_partition_info();
+
+    scheduling_reference_sm =
+        partition_info.available_sm;
+
+    const int level_stream_limit =
+        decide_stream_count(
+            levels,
+            max_stream_count
+        );
+
+    const int resource_stream_limit =
+        get_normal_priority_stream_limit(
+            partition_info,
+            normal_stream_percent
+        );
+
+    const int candidate_stream_limit =
+        std::min(
+            level_stream_limit,
+            resource_stream_limit
+        );
+
+    if (candidate_stream_limit < 2) {
+      throw std::runtime_error(
+          "no valid normal+GC stream configuration candidate"
+      );
+    }
+
+    std::vector<std::vector<int>>
+        candidate_stream_sm_counts;
+
+    candidate_stream_sm_counts.reserve(
+        static_cast<std::size_t>(
+            candidate_stream_limit - 1
+        )
+    );
+
+    for (int candidate_stream_count = 2;
+         candidate_stream_count <= candidate_stream_limit;
+         ++candidate_stream_count) {
+      const std::vector<int> candidate_sm_counts =
+          decide_stream_sm_counts(
+              tasks,
+              levels,
+              candidate_stream_count,
+              0,
+              normal_stream_percent
+          );
+
+      const StreamScheduleResult candidate_schedule =
+          simulate_stream_assignment(
+              tasks,
+              candidate_sm_counts,
+              partition_info.available_sm
+          );
+
+      std::cout
+          << "[candidate] stream_count="
+          << candidate_stream_count
+          << ", estimated_makespan="
+          << candidate_schedule.makespan
+          << ", SM=";
+
+      for (std::size_t index = 0;
+           index < candidate_sm_counts.size();
+           ++index) {
+        if (index > 0) {
+          std::cout << ',';
+        }
+
+        std::cout << candidate_sm_counts.at(index);
+      }
+
+      std::cout << '\n';
+
+      candidate_stream_sm_counts.push_back(
+          candidate_sm_counts
+      );
+    }
+
+    stream_decision =
+        decide_stream_configuration(
+            tasks,
+            candidate_stream_sm_counts,
+            partition_info.available_sm
+        );
+  }
+
+  const int stream_count =
+      stream_decision.stream_count;
+
+  const std::vector<int> stream_sm_counts =
+      stream_decision.stream_sm_counts;
+
+  if (static_cast<int>(stream_sm_counts.size()) != stream_count) {
+    throw std::runtime_error(
+        "stream_sm_counts size does not match stream_count"
+    );
+  }
+
+  for (int stream_id = 0;
+       stream_id < stream_count;
+       ++stream_id) {
+    if (stream_sm_counts.at(
+            static_cast<std::size_t>(stream_id)
+        ) <= 0) {
+      throw std::runtime_error(
+          "invalid SM count for stream " +
+          std::to_string(stream_id)
+      );
+    }
+  }
+
+  /*
+   * 5. 隙間挿入型HEFTで最終スケジュールを作り、DFGへ反映する。
+   * main側でも同じ計画開始時刻を使ってstream内投入順を固定する。
+   */
+  StreamScheduleResult final_schedule;
+
+  {
+    ScopedTimer timer(bench.task_assignment_ms);
+
+    final_schedule =
+        simulate_stream_assignment(
+            tasks,
+            stream_sm_counts,
+            scheduling_reference_sm
+        );
+
+    apply_stream_schedule_to_dfg(
+        dfg,
+        final_schedule
+    );
+  }
+
+  std::cout << "===== Proposed configuration =====\n";
+  std::cout << "max_stream_count : "
+            << max_stream_count << '\n';
+  std::cout << "stream_count     : "
+            << stream_count << '\n';
+  std::cout << "estimated makespan: "
+            << stream_decision.estimated_makespan
+            << '\n';
+
+  for (int stream_id = 0;
+       stream_id < stream_count;
+       ++stream_id) {
+    std::cout
+        << "stream "
+        << stream_id
+        << " : "
+        << stream_sm_counts.at(
+               static_cast<std::size_t>(stream_id)
+           )
+        << " SM\n";
+  }
+
+  constexpr int N = 1 << 20;
+
+  float* dmem = nullptr;
+
+  CUDA_CHECK(
+      cudaMalloc(
+          &dmem,
+          static_cast<std::size_t>(N) * sizeof(float)
+      )
+  );
+
+  CUDA_CHECK(
+      cudaMemset(
+          dmem,
+          0,
+          static_cast<std::size_t>(N) * sizeof(float)
+      )
+  );
+
+  /*
+   * 6. 決定済みのSM数を使用してGreen Contextを生成
+   */
+  RuntimeResources rr;
+
+  {
+    ScopedTimer timer(bench.resource_allocation_ms);
+
+    rr = create_runtime_resources(
+        stream_sm_counts
+    );
+  }
+
+  tf::Executor executor(8);
+  tf::Taskflow taskflow;
+
+  std::unordered_map<int, tf::Task> task_nodes;
+  std::unordered_map<int, cudaEvent_t> done_events;
+  std::unordered_map<int, cudaEvent_t> kernel_start_events;
+  std::unordered_map<int, cudaEvent_t> kernel_stop_events;
+
+  task_nodes.reserve(tasks.size());
+  done_events.reserve(tasks.size());
+  kernel_start_events.reserve(tasks.size());
+  kernel_stop_events.reserve(tasks.size());
+
+  /*
+   * 全streamのイベント時刻を比較するための共通基準
+   */
+  cudaStream_t timing_stream = nullptr;
+  cudaEvent_t origin_event = nullptr;
+
+  CUDA_CHECK(
+      cudaStreamCreateWithFlags(
+          &timing_stream,
+          cudaStreamNonBlocking
+      )
+  );
+
+  CUDA_CHECK(
+      cudaEventCreate(&origin_event)
+  );
+
+  CUDA_CHECK(
+      cudaEventRecord(
+          origin_event,
+          timing_stream
+      )
+  );
+
+  CUDA_CHECK(
+      cudaEventSynchronize(origin_event)
+  );
+
+  /*
+   * タスクごとのCUDA Eventを生成
+   */
+  for (const auto& task : tasks) {
+    cudaEvent_t done_event = nullptr;
+    cudaEvent_t start_event = nullptr;
+    cudaEvent_t stop_event = nullptr;
+
+    CUDA_CHECK(
+        cudaEventCreateWithFlags(
+            &done_event,
+            cudaEventDisableTiming
+        )
+    );
+
+    CUDA_CHECK(
+        cudaEventCreate(&start_event)
+    );
+
+    CUDA_CHECK(
+        cudaEventCreate(&stop_event)
+    );
+
+    done_events.emplace(
+        task.id,
+        done_event
+    );
+
+    kernel_start_events.emplace(
+        task.id,
+        start_event
+    );
+
+    kernel_stop_events.emplace(
+        task.id,
+        stop_event
+    );
+  }
+
+  /*
+   * Taskflowノードを生成
+   */
+  for (const auto& task : tasks) {
+    tf::Task node =
+        taskflow.emplace([&, task]() {
+          const auto node_it =
+              dfg.nodes.find(task.id);
+
+          if (node_it == dfg.nodes.end()) {
+            throw std::runtime_error(
+                "DFG node not found: " +
+                std::to_string(task.id)
+            );
+          }
+
+          const int stream_id =
+              node_it->second.stream_id;
+
+          if (stream_id < 0 ||
+              stream_id >= stream_count) {
+            throw std::runtime_error(
+                "invalid stream id for task " +
+                std::to_string(task.id)
+            );
+          }
+
+          cudaStream_t stream =
+              get_stream_by_id(
+                  rr,
+                  stream_id
+              );
+
+          /*
+           * 先行タスクのGPU完了を待つ
+           */
+          for (const int pred_id : task.preds) {
+            const auto event_it =
+                done_events.find(pred_id);
+
+            if (event_it == done_events.end()) {
+              throw std::runtime_error(
+                  "unknown predecessor id: " +
+                  std::to_string(pred_id)
+              );
+            }
+
+            CUDA_CHECK(
+                cudaStreamWaitEvent(
+                    stream,
+                    event_it->second,
+                    0
+                )
+            );
+          }
+
+          CUDA_CHECK(
+              cudaEventRecord(
+                  kernel_start_events.at(task.id),
+                  stream
+              )
+          );
+
+          launch_task_kernel(
+              task,
+              dmem,
+              N,
+              stream
+          );
+
+          CUDA_CHECK(
+              cudaEventRecord(
+                  kernel_stop_events.at(task.id),
+                  stream
+              )
+          );
+
+          CUDA_CHECK(
+              cudaEventRecord(
+                  done_events.at(task.id),
+                  stream
+              )
+          );
+        });
+
+    node.name(
+        std::to_string(task.id)
+    );
+
+    task_nodes.emplace(
+        task.id,
+        node
+    );
+  }
+
+  /*
+   * Taskflow上の依存関係を設定
+   */
+  for (const auto& task : tasks) {
+    const auto current_it =
+        task_nodes.find(task.id);
+
+    if (current_it == task_nodes.end()) {
+      throw std::runtime_error(
+          "Taskflow node not found: " +
+          std::to_string(task.id)
+      );
+    }
+
+    for (const int pred_id : task.preds) {
+      const auto predecessor_it =
+          task_nodes.find(pred_id);
+
+      if (predecessor_it == task_nodes.end()) {
+        throw std::runtime_error(
+            "predecessor Taskflow node not found: " +
+            std::to_string(pred_id)
+        );
+      }
+
+      predecessor_it->second.precede(
+          current_it->second
+      );
+    }
+  }
+
+  /*
+   * 計画した開始時刻順に、同一stream内の投入順を固定する。
+   * 依存待ちタスクが先にstreamへ投入されて後続を塞ぐ
+   * Head-of-Line Blockingを防ぐ。
+   */
+  std::vector<std::vector<int>> stream_task_order(
+      static_cast<std::size_t>(stream_count)
+  );
+
+  std::unordered_map<int, const TaskSpec*> task_spec_by_id;
+  task_spec_by_id.reserve(tasks.size());
+
+  for (const auto& task : tasks) {
+    task_spec_by_id.emplace(task.id, &task);
+    const int stream_id =
+        final_schedule.task_stream.at(task.id);
+
+    stream_task_order.at(
+        static_cast<std::size_t>(stream_id)
+    ).push_back(task.id);
+  }
+
+  for (int stream_id = 0;
+       stream_id < stream_count;
+       ++stream_id) {
+    auto& task_ids = stream_task_order.at(
+        static_cast<std::size_t>(stream_id)
+    );
+
+    std::stable_sort(
+        task_ids.begin(),
+        task_ids.end(),
+        [&](int lhs_id, int rhs_id) {
+          const double lhs_start =
+              final_schedule.task_start_time.at(lhs_id);
+          const double rhs_start =
+              final_schedule.task_start_time.at(rhs_id);
+
+          if (lhs_start != rhs_start) {
+            return lhs_start < rhs_start;
+          }
+
+          const double lhs_finish =
+              final_schedule.task_finish_time.at(lhs_id);
+          const double rhs_finish =
+              final_schedule.task_finish_time.at(rhs_id);
+
+          if (lhs_finish != rhs_finish) {
+            return lhs_finish < rhs_finish;
+          }
+
+          return lhs_id < rhs_id;
+        }
+    );
+
+    for (std::size_t index = 1;
+         index < task_ids.size();
+         ++index) {
+      const int previous_id = task_ids.at(index - 1);
+      const int current_id = task_ids.at(index);
+
+      bool already_direct_predecessor = false;
+
+      const auto current_spec_it =
+          task_spec_by_id.find(current_id);
+
+      if (current_spec_it == task_spec_by_id.end()) {
+        throw std::runtime_error(
+            "task specification not found: " +
+            std::to_string(current_id)
+        );
+      }
+
+      for (const int pred_id : current_spec_it->second->preds) {
+        if (pred_id == previous_id) {
+          already_direct_predecessor = true;
+          break;
+        }
+      }
+
+      if (!already_direct_predecessor) {
+        task_nodes.at(previous_id).precede(
+            task_nodes.at(current_id)
+        );
+      }
+    }
+  }
+
+  /*
+   * trial/baselineと同じ定義で計測する。
+   *
+   * gpu_submit_wait_ms:
+   *   CPU側でTaskflowの投入を開始してから、GPU上の全処理が
+   *   完了するまでの実時間。
+   *
+   * gpu_kernel_ms:
+   *   GPU上で最初のkernelが開始してから、最後のkernelが
+   *   終了するまでのCUDA Event時間。
+   */
+  const auto submit_start = Clock::now();
+
+  executor.run(taskflow).wait();
+
+  /*
+   * Taskflow完了はCUDAコマンドの投入完了なので、
+   * GPU上の全kernel完了を明示的に待つ。
+   */
+  CUDA_CHECK(
+      cudaDeviceSynchronize()
+  );
+
+  const auto submit_end = Clock::now();
+
+  bench.gpu_submit_wait_ms =
+      elapsed_ms(
+          submit_start,
+          submit_end
+      );
+
+  /*
+   * 複数stream全体のGPU makespanを求める。
+   * 各taskの開始・終了イベントを共通originから測り、
+   * 最初の開始から最後の終了までをgpu_kernel_msとする。
+   */
+  if (tasks.empty()) {
+    bench.gpu_kernel_ms = 0.0;
+  } else {
+    double first_kernel_start_ms =
+        std::numeric_limits<double>::max();
+
+    double last_kernel_stop_ms = 0.0;
+
+    for (const auto& task : tasks) {
+      float start_from_origin_ms = 0.0f;
+      float stop_from_origin_ms = 0.0f;
+
+      CUDA_CHECK(
+          cudaEventElapsedTime(
+              &start_from_origin_ms,
+              origin_event,
+              kernel_start_events.at(task.id)
+          )
+      );
+
+      CUDA_CHECK(
+          cudaEventElapsedTime(
+              &stop_from_origin_ms,
+              origin_event,
+              kernel_stop_events.at(task.id)
+          )
+      );
+
+      first_kernel_start_ms =
+          std::min(
+              first_kernel_start_ms,
+              static_cast<double>(
+                  start_from_origin_ms
+              )
+          );
+
+      last_kernel_stop_ms =
+          std::max(
+              last_kernel_stop_ms,
+              static_cast<double>(
+                  stop_from_origin_ms
+              )
+          );
+    }
+
+    bench.gpu_kernel_ms =
+        last_kernel_stop_ms -
+        first_kernel_start_ms;
+  }
+
+  print_runtime_resource_state(
+      rr,
+      stream_count,
+      "before GC release"
+  );
+
+  release_finished_gc_streams(
+      rr,
+      stream_count
+  );
+
+  print_runtime_resource_state(
+      rr,
+      stream_count,
+      "after GC release"
+  );
+
+  if (all_gc_streams_released(
+          rr,
+          stream_count
+      )) {
+    std::cout
+        << "[CHECK] all GC streams released\n";
+  } else {
+    std::cout
+        << "[CHECK] some GC streams are still alive\n";
+  }
+
+  /*
+   * CUDA Eventを破棄
+   */
+  for (auto& [task_id, event] : done_events) {
+    CUDA_CHECK(
+        cudaEventDestroy(event)
+    );
+  }
+
+  for (auto& [task_id, event] : kernel_start_events) {
+    CUDA_CHECK(
+        cudaEventDestroy(event)
+    );
+  }
+
+  for (auto& [task_id, event] : kernel_stop_events) {
+    CUDA_CHECK(
+        cudaEventDestroy(event)
+    );
+  }
+
+  CUDA_CHECK(
+      cudaEventDestroy(origin_event)
+  );
+
+  CUDA_CHECK(
+      cudaStreamDestroy(timing_stream)
+  );
+
+  destroy_runtime_resources(rr);
+
+  CUDA_CHECK(
+      cudaFree(dmem)
+  );
+
+  const auto total_end = Clock::now();
+
+  bench.total_ms =
+      elapsed_ms(
+          total_start,
+          total_end
+      );
+
+  return bench;
+}
+
+void print_stg_summary(const std::vector<TaskSpec>& tasks) {
+  int heavy = 0;
+  int light = 0;
+  long long total_proc = 0;
+
+  for (const auto& t : tasks) {
+    total_proc += t.proc_time;
+
+    if (t.kind == KernelKind::HEAVY) {
+      ++heavy;
+    } else {
+      ++light;
+    }
+  }
+
+  std::cout << "===== STG summary =====\n";
+  std::cout << "num_tasks     : " << tasks.size() << "\n";
+  std::cout << "light_tasks   : " << light << "\n";
+  std::cout << "heavy_tasks   : " << heavy << "\n";
+  std::cout << "sum_proc_time : " << total_proc << "\n";
+}
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::cerr
+        << "Usage: "
+        << argv[0]
+        << " input.stg\n";
+
+    return 1;
+  }
+
+  try {
+    const StgGraph graph =
+        load_stg_without_comm(argv[1]);
+
+    const auto tasks =
+        make_task_specs_from_stg(graph);
+
+    print_stg_summary(tasks);
+
+    const BenchResult result =
+        run_taskflow_cuda(tasks);
+
+    std::cout << "mode: proposed\n";
+    print_result(result);
+  }
+  catch (const std::exception& error) {
+    std::cerr
+        << "exception: "
+        << error.what()
+        << '\n';
+
+    return 1;
+  }
+
+  return 0;
+}

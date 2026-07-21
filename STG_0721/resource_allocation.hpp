@@ -117,7 +117,7 @@ inline RuntimeResources resource_allocation(
     const std::vector<TaskSpec>& tasks,
     int stream_count,
     int gpu_device_index = 0,
-    int reserve_sm = 8
+    int reserve_sm = 64
 ) {
   if (stream_count < 2) {
     throw std::runtime_error("stream_count must be at least 2");
