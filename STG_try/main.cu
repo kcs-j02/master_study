@@ -1,244 +1,299 @@
 #include <cuda_runtime.h>
 
-#include <algorithm>
 #include <array>
 #include <chrono>
-#include <climits>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
-#include <stdexcept>
-#include <string>
+#include <sstream>
 
-namespace {
+constexpr int TASKS = 4;
+constexpr int N = 1 << 24;
 
-constexpr int kTaskCount = 4;
-constexpr int kElementCount = 1 << 24;
-constexpr int kIterations = 2000;
+void check_cuda(cudaError_t error, const char* what) {
+  if (error != cudaSuccess) {
+    std::cerr << "CUDA error: " << cudaGetErrorString(error) << " at "
+              << what << "\n";
+    std::exit(EXIT_FAILURE);
+  }
+}
 
-#define CUDA_CHECK(expression)                                                \
-  do {                                                                        \
-    const cudaError_t error = (expression);                                   \
-    if (error != cudaSuccess) {                                               \
-      throw std::runtime_error(                                               \
-          std::string(cudaGetErrorName(error)) + ": " +                      \
-          cudaGetErrorString(error) + " (" + __FILE__ + ":" +               \
-          std::to_string(__LINE__) + ")");                                   \
-    }                                                                         \
-  } while (false)
+__global__ void kernel(float* data, int iters) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= N) return;
 
-struct GreenContextResources {
-  std::array<cudaExecutionContext_t, kTaskCount> contexts{};
-  std::array<cudaDevResourceDesc_t, kTaskCount> descriptors{};
-  std::array<cudaStream_t, kTaskCount> streams{};
+  float x = i;
+  for (int j = 0; j < iters; ++j) {
+    x = x * 1.000001f + 0.00001f;
+  }
+  data[i] = x;
+}
+
+struct BenchmarkCaseResult {
+  std::array<float, TASKS> parallel_ms{};
+  std::array<float, TASKS> sequential_ms{};
+  double parallel_total_ms = 0.0;
+  double sequential_total_ms = 0.0;
 };
 
-int parse_positive_int(const char* text, const std::string& name) {
-  char* end = nullptr;
-  const long value = std::strtol(text, &end, 10);
+struct SingleTaskCaseResult {
+  float kernel_ms = 0.0f;
+  double total_ms = 0.0;
+};
 
-  if (text == end || *end != '\0' || value <= 0 || value > INT_MAX) {
-    throw std::invalid_argument(name + " must be a positive integer");
-  }
+SingleTaskCaseResult run_single_task_case(
+    int kernel_iters,
+    int sm_count,
+    cudaDevResource all_sms) {
+  SingleTaskCaseResult result{};
 
-  return static_cast<int>(value);
+  cudaDevResource split_sms{};
+  cudaDevSmResourceGroupParams param{};
+  param.smCount = sm_count;
+
+  check_cuda(cudaDevSmResourceSplit(
+                 &split_sms, 1, &all_sms, nullptr, 0, &param),
+             "cudaDevSmResourceSplit(single)");
+
+  cudaDevResourceDesc_t desc{};
+  cudaExecutionContext_t context{};
+  cudaStream_t stream{};
+  cudaEvent_t start{};
+  cudaEvent_t stop{};
+  float* data = nullptr;
+
+  check_cuda(cudaDevResourceGenerateDesc(&desc, &split_sms, 1),
+             "cudaDevResourceGenerateDesc(single)");
+  check_cuda(cudaGreenCtxCreate(&context, desc, 0, 0),
+             "cudaGreenCtxCreate(single)");
+  check_cuda(cudaExecutionCtxStreamCreate(
+                 &stream, context, cudaStreamNonBlocking, 0),
+             "cudaExecutionCtxStreamCreate(single)");
+  check_cuda(cudaMalloc(&data, N * sizeof(float)), "cudaMalloc(single)");
+  check_cuda(cudaEventCreate(&start), "cudaEventCreate(start,single)");
+  check_cuda(cudaEventCreate(&stop), "cudaEventCreate(stop,single)");
+
+  auto total_start = std::chrono::steady_clock::now();
+  check_cuda(cudaEventRecord(start, stream), "cudaEventRecord(start,single)");
+  kernel<<<(N + 255) / 256, 256, 0, stream>>>(data, kernel_iters);
+  check_cuda(cudaGetLastError(), "cudaGetLastError(single)");
+  check_cuda(cudaEventRecord(stop, stream), "cudaEventRecord(stop,single)");
+  check_cuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize(single)");
+  auto total_stop = std::chrono::steady_clock::now();
+
+  check_cuda(cudaEventElapsedTime(&result.kernel_ms, start, stop),
+             "cudaEventElapsedTime(single)");
+  result.total_ms =
+      std::chrono::duration<double, std::milli>(total_stop - total_start)
+          .count();
+
+  check_cuda(cudaEventDestroy(start), "cudaEventDestroy(start,single)");
+  check_cuda(cudaEventDestroy(stop), "cudaEventDestroy(stop,single)");
+  check_cuda(cudaFree(data), "cudaFree(single)");
+  check_cuda(cudaStreamDestroy(stream), "cudaStreamDestroy(single)");
+  check_cuda(cudaExecutionCtxDestroy(context),
+             "cudaExecutionCtxDestroy(single)");
+
+  return result;
 }
 
-__global__ void task_kernel(float* output, int element_count, int iterations) {
-  const int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index >= element_count) {
-    return;
+BenchmarkCaseResult run_benchmark_case(
+    int kernel_iters,
+    const std::array<int, TASKS>& sm_count,
+    cudaDevResource all_sms) {
+  BenchmarkCaseResult result{};
+
+  std::array<cudaDevResource, TASKS> split_sms{};
+  std::array<cudaDevSmResourceGroupParams, TASKS> params{};
+  for (int i = 0; i < TASKS; ++i) {
+    params[i].smCount = sm_count[i];
   }
 
-  float value = static_cast<float>(index & 255) * 0.001f;
-#pragma unroll 1
-  for (int iteration = 0; iteration < iterations; ++iteration) {
-    value = value * 1.000001f + 0.00001f;
-    value = value * 0.999999f + 0.00002f;
+  check_cuda(
+      cudaDevSmResourceSplit(
+          split_sms.data(), TASKS, &all_sms, nullptr, 0, params.data()),
+      "cudaDevSmResourceSplit");
+
+  std::array<cudaDevResourceDesc_t, TASKS> desc{};
+  std::array<cudaExecutionContext_t, TASKS> context{};
+  std::array<cudaStream_t, TASKS> stream{};
+  std::array<cudaEvent_t, TASKS> start{};
+  std::array<cudaEvent_t, TASKS> stop{};
+  std::array<float*, TASKS> data{};
+
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(
+        cudaDevResourceGenerateDesc(&desc[i], &split_sms[i], 1),
+        "cudaDevResourceGenerateDesc");
+    check_cuda(cudaGreenCtxCreate(&context[i], desc[i], 0, 0),
+               "cudaGreenCtxCreate");
+    check_cuda(cudaExecutionCtxStreamCreate(
+                   &stream[i], context[i], cudaStreamNonBlocking, 0),
+               "cudaExecutionCtxStreamCreate");
+    check_cuda(cudaMalloc(&data[i], N * sizeof(float)), "cudaMalloc");
+    check_cuda(cudaEventCreate(&start[i]), "cudaEventCreate(start)");
+    check_cuda(cudaEventCreate(&stop[i]), "cudaEventCreate(stop)");
   }
-  output[index] = value;
+
+  auto total_start = std::chrono::steady_clock::now();
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(cudaEventRecord(start[i], stream[i]), "cudaEventRecord(start)");
+    kernel<<<(N + 255) / 256, 256, 0, stream[i]>>>(data[i], kernel_iters);
+    check_cuda(cudaGetLastError(), "cudaGetLastError");
+    check_cuda(cudaEventRecord(stop[i], stream[i]), "cudaEventRecord(stop)");
+  }
+
+  check_cuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize");
+  auto total_stop = std::chrono::steady_clock::now();
+
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(cudaEventElapsedTime(&result.parallel_ms[i], start[i], stop[i]),
+               "cudaEventElapsedTime(parallel)");
+    check_cuda(cudaEventDestroy(start[i]), "cudaEventDestroy(start)");
+    check_cuda(cudaEventDestroy(stop[i]), "cudaEventDestroy(stop)");
+    check_cuda(cudaFree(data[i]), "cudaFree(data)");
+    check_cuda(cudaStreamDestroy(stream[i]), "cudaStreamDestroy(stream)");
+    check_cuda(cudaExecutionCtxDestroy(context[i]), "cudaExecutionCtxDestroy");
+  }
+
+  result.parallel_total_ms =
+      std::chrono::duration<double, std::milli>(total_stop - total_start)
+          .count();
+
+  cudaDevResource sequential_sms{};
+  cudaDevSmResourceGroupParams sequential_param{};
+  sequential_param.smCount = 64;
+  check_cuda(cudaDevSmResourceSplit(
+                 &sequential_sms, 1, &all_sms, nullptr, 0, &sequential_param),
+             "cudaDevSmResourceSplit(sequential)");
+
+  cudaDevResourceDesc_t sequential_desc{};
+  cudaExecutionContext_t sequential_context{};
+  cudaStream_t sequential_stream{};
+  check_cuda(cudaDevResourceGenerateDesc(
+                 &sequential_desc, &sequential_sms, 1),
+             "cudaDevResourceGenerateDesc(sequential)");
+  check_cuda(cudaGreenCtxCreate(&sequential_context, sequential_desc, 0, 0),
+             "cudaGreenCtxCreate(sequential)");
+  check_cuda(cudaExecutionCtxStreamCreate(
+                 &sequential_stream, sequential_context,
+                 cudaStreamNonBlocking, 0),
+             "cudaExecutionCtxStreamCreate(sequential)");
+
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(cudaMalloc(&data[i], N * sizeof(float)), "cudaMalloc(sequential)");
+    check_cuda(cudaEventCreate(&start[i]), "cudaEventCreate(start,sequential)");
+    check_cuda(cudaEventCreate(&stop[i]), "cudaEventCreate(stop,sequential)");
+  }
+
+  auto sequential_total_start = std::chrono::steady_clock::now();
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(cudaEventRecord(start[i], sequential_stream),
+               "cudaEventRecord(start,sequential)");
+    kernel<<<(N + 255) / 256, 256, 0, sequential_stream>>>(data[i], kernel_iters);
+    check_cuda(cudaGetLastError(), "cudaGetLastError(sequential)");
+    check_cuda(cudaEventRecord(stop[i], sequential_stream),
+               "cudaEventRecord(stop,sequential)");
+  }
+  check_cuda(cudaStreamSynchronize(sequential_stream), "cudaStreamSynchronize");
+  auto sequential_total_stop = std::chrono::steady_clock::now();
+
+  for (int i = 0; i < TASKS; ++i) {
+    check_cuda(cudaEventElapsedTime(&result.sequential_ms[i], start[i], stop[i]),
+               "cudaEventElapsedTime(sequential)");
+    check_cuda(cudaEventDestroy(start[i]), "cudaEventDestroy(start,sequential)");
+    check_cuda(cudaEventDestroy(stop[i]), "cudaEventDestroy(stop,sequential)");
+    check_cuda(cudaFree(data[i]), "cudaFree(data,sequential)");
+  }
+
+  result.sequential_total_ms =
+      std::chrono::duration<double, std::milli>(
+          sequential_total_stop - sequential_total_start)
+          .count();
+
+  check_cuda(cudaStreamDestroy(sequential_stream), "cudaStreamDestroy(sequential)");
+  check_cuda(cudaExecutionCtxDestroy(sequential_context),
+             "cudaExecutionCtxDestroy(sequential)");
+
+  return result;
 }
-
-void destroy_resources(GreenContextResources& resources) noexcept {
-  for (cudaStream_t& stream : resources.streams) {
-    if (stream != nullptr) {
-      cudaStreamDestroy(stream);
-      stream = nullptr;
-    }
-  }
-
-  for (cudaExecutionContext_t& context : resources.contexts) {
-    if (context != nullptr) {
-      cudaExecutionCtxDestroy(context);
-      context = nullptr;
-    }
-  }
-}
-
-GreenContextResources create_green_contexts(
-    const std::array<int, kTaskCount>& requested_sm_counts,
-    int device_index) {
-  CUDA_CHECK(cudaSetDevice(device_index));
-
-  cudaDevResource sm_resource{};
-  CUDA_CHECK(cudaDeviceGetDevResource(
-      device_index, &sm_resource, cudaDevResourceTypeSm));
-
-  const int available_sm = static_cast<int>(sm_resource.sm.smCount);
-  const int alignment =
-      static_cast<int>(sm_resource.sm.smCoscheduledAlignment);
-  const int allocation_unit = std::max(2, alignment);
-  const int raw_minimum_sm =
-      std::max(2, static_cast<int>(sm_resource.sm.minSmPartitionSize));
-  const int minimum_sm =
-      ((raw_minimum_sm + allocation_unit - 1) / allocation_unit) *
-      allocation_unit;
-
-  long long requested_total = 0;
-  for (int task = 0; task < kTaskCount; ++task) {
-    const int requested = requested_sm_counts[task];
-    if (requested < minimum_sm) {
-      throw std::invalid_argument(
-          "task " + std::to_string(task) + " requests " +
-          std::to_string(requested) + " SMs, but the minimum is " +
-          std::to_string(minimum_sm));
-    }
-    if (requested % allocation_unit != 0) {
-      throw std::invalid_argument(
-          "task " + std::to_string(task) + " SM count must be a multiple of " +
-          std::to_string(allocation_unit));
-    }
-    requested_total += requested;
-  }
-
-  if (requested_total > available_sm) {
-    throw std::invalid_argument(
-        "the four tasks request " + std::to_string(requested_total) +
-        " SMs, but only " + std::to_string(available_sm) + " are available");
-  }
-
-  std::array<cudaDevResource, kTaskCount> split_resources{};
-  std::array<cudaDevSmResourceGroupParams, kTaskCount> group_params{};
-  for (int task = 0; task < kTaskCount; ++task) {
-    group_params[task].smCount =
-        static_cast<unsigned int>(requested_sm_counts[task]);
-    group_params[task].coscheduledSmCount = 0;
-    group_params[task].preferredCoscheduledSmCount = 0;
-    group_params[task].flags = 0;
-  }
-
-  CUDA_CHECK(cudaDevSmResourceSplit(
-      split_resources.data(), kTaskCount, &sm_resource, nullptr, 0,
-      group_params.data()));
-
-  GreenContextResources resources;
-  try {
-    for (int task = 0; task < kTaskCount; ++task) {
-      CUDA_CHECK(cudaDevResourceGenerateDesc(
-          &resources.descriptors[task], &split_resources[task], 1));
-      CUDA_CHECK(cudaGreenCtxCreate(
-          &resources.contexts[task], resources.descriptors[task],
-          device_index, 0));
-      CUDA_CHECK(cudaExecutionCtxStreamCreate(
-          &resources.streams[task], resources.contexts[task],
-          cudaStreamNonBlocking, 0));
-    }
-  } catch (...) {
-    destroy_resources(resources);
-    throw;
-  }
-
-  std::cout << "available SMs: " << available_sm
-            << ", minimum partition: " << minimum_sm
-            << ", allocation unit: " << allocation_unit << '\n';
-  return resources;
-}
-
-void run_four_tasks(const std::array<int, kTaskCount>& sm_counts) {
-  GreenContextResources resources = create_green_contexts(sm_counts, 0);
-  std::array<float*, kTaskCount> device_outputs{};
-  std::array<cudaEvent_t, kTaskCount> start_events{};
-  std::array<cudaEvent_t, kTaskCount> stop_events{};
-
-  try {
-    const std::size_t bytes =
-        static_cast<std::size_t>(kElementCount) * sizeof(float);
-    for (int task = 0; task < kTaskCount; ++task) {
-      CUDA_CHECK(cudaMalloc(&device_outputs[task], bytes));
-      CUDA_CHECK(cudaEventCreate(&start_events[task]));
-      CUDA_CHECK(cudaEventCreate(&stop_events[task]));
-    }
-
-    const auto wall_start = std::chrono::steady_clock::now();
-    constexpr int threads_per_block = 256;
-    const int block_count =
-        (kElementCount + threads_per_block - 1) / threads_per_block;
-
-    // Each independent task is submitted to its own Green Context stream.
-    for (int task = 0; task < kTaskCount; ++task) {
-      CUDA_CHECK(cudaEventRecord(start_events[task], resources.streams[task]));
-      task_kernel<<<block_count, threads_per_block, 0,
-                    resources.streams[task]>>>(
-          device_outputs[task], kElementCount, kIterations);
-      CUDA_CHECK(cudaGetLastError());
-      CUDA_CHECK(cudaEventRecord(stop_events[task], resources.streams[task]));
-    }
-
-    CUDA_CHECK(cudaDeviceSynchronize());
-    const auto wall_stop = std::chrono::steady_clock::now();
-
-    std::cout << "===== Four Green Context tasks =====\n";
-    for (int task = 0; task < kTaskCount; ++task) {
-      float elapsed_ms = 0.0f;
-      CUDA_CHECK(cudaEventElapsedTime(
-          &elapsed_ms, start_events[task], stop_events[task]));
-      std::cout << "task " << task << ": " << sm_counts[task]
-                << " SM, " << elapsed_ms << " ms\n";
-    }
-
-    const double wall_ms =
-        std::chrono::duration<double, std::milli>(wall_stop - wall_start)
-            .count();
-    std::cout << "total wall time: " << wall_ms << " ms\n";
-  } catch (...) {
-    for (cudaEvent_t event : start_events) {
-      if (event != nullptr) cudaEventDestroy(event);
-    }
-    for (cudaEvent_t event : stop_events) {
-      if (event != nullptr) cudaEventDestroy(event);
-    }
-    for (float* output : device_outputs) {
-      if (output != nullptr) cudaFree(output);
-    }
-    destroy_resources(resources);
-    throw;
-  }
-
-  for (cudaEvent_t event : start_events) CUDA_CHECK(cudaEventDestroy(event));
-  for (cudaEvent_t event : stop_events) CUDA_CHECK(cudaEventDestroy(event));
-  for (float* output : device_outputs) CUDA_CHECK(cudaFree(output));
-  destroy_resources(resources);
-}
-
-}  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != kTaskCount + 1) {
-    std::cerr << "Usage: " << argv[0] << " SM1 SM2 SM3 SM4\n"
-              << "Example: " << argv[0] << " 16 16 16 16\n";
-    return EXIT_FAILURE;
+  if (argc != TASKS + 1) {
+    std::cerr << "Usage: " << argv[0] << " SM1 SM2 SM3 SM4\n";
+    return 1;
   }
 
-  try {
-    std::array<int, kTaskCount> sm_counts{};
-    for (int task = 0; task < kTaskCount; ++task) {
-      sm_counts[task] = parse_positive_int(
-          argv[task + 1], "SM" + std::to_string(task + 1));
+  std::array<int, TASKS> sm_count{};
+  for (int i = 0; i < TASKS; ++i) {
+    sm_count[i] = std::atoi(argv[i + 1]);
+    if (sm_count[i] <= 0) {
+      std::cerr << "SM count must be positive\n";
+      return 1;
     }
-    run_four_tasks(sm_counts);
-  } catch (const std::exception& error) {
-    std::cerr << "error: " << error.what() << '\n';
-    return EXIT_FAILURE;
   }
 
-  return EXIT_SUCCESS;
+  cudaDevResource all_sms{};
+  check_cuda(cudaDeviceGetDevResource(0, &all_sms, cudaDevResourceTypeSm),
+             "cudaDeviceGetDevResource");
+
+  const auto short_result = run_benchmark_case(2000, sm_count, all_sms);
+  const auto medium_result = run_benchmark_case(200000, sm_count, all_sms);
+  const auto long_result = run_benchmark_case(1000000, sm_count, all_sms);
+
+  const std::array<int, 3> single_task_sms = {16, 32, 64};
+  std::array<SingleTaskCaseResult, 3> single_task_results{};
+  for (int i = 0; i < 3; ++i) {
+    single_task_results[i] = run_single_task_case(
+        1000000, single_task_sms[i], all_sms);
+  }
+
+  auto print_table = [&](const char* title, const BenchmarkCaseResult& result) {
+    std::cout << "\n" << title << "\n";
+    std::cout << std::left << std::setw(8) << "task"
+              << "| " << std::setw(24) << "4 Green Contexts (parallel)"
+              << "| " << std::setw(24) << "64 SM stream (sequential)"
+              << "\n";
+    std::cout << std::string(8 + 1 + 24 + 1 + 24 + 1, '-') << "\n";
+
+    for (int i = 0; i < TASKS; ++i) {
+      std::ostringstream parallel_ss;
+      parallel_ss << sm_count[i] << " SM, " << result.parallel_ms[i] << " ms";
+      std::ostringstream sequential_ss;
+      sequential_ss << "64 SM, " << result.sequential_ms[i] << " ms";
+
+      std::cout << std::left << std::setw(8) << i
+                << "| " << std::setw(24) << parallel_ss.str()
+                << "| " << std::setw(24) << sequential_ss.str()
+                << "\n";
+    }
+
+    std::ostringstream parallel_total_ss;
+    parallel_total_ss << "total, " << result.parallel_total_ms << " ms";
+    std::ostringstream sequential_total_ss;
+    sequential_total_ss << "total, " << result.sequential_total_ms << " ms";
+
+    std::cout << std::left << std::setw(8) << "total"
+              << "| " << std::setw(24) << parallel_total_ss.str()
+              << "| " << std::setw(24) << sequential_total_ss.str()
+              << "\n";
+  };
+
+  print_table("[short workload: 2000 iterations]", short_result);
+  print_table("[medium workload: 200000 iterations]", medium_result);
+  print_table("[long workload: 1000000 iterations]", long_result);
+
+  std::cout << "\n[one task SM scaling: 1000000 iterations]\n";
+  std::cout << std::left << std::setw(8) << "SM"
+            << "| " << std::setw(24) << "kernel time (ms)"
+            << "\n";
+  std::cout << std::string(8 + 1 + 24 + 1, '-') << "\n";
+  for (int i = 0; i < 3; ++i) {
+    std::cout << std::left << std::setw(8) << single_task_sms[i]
+              << "| " << std::setw(24) << single_task_results[i].kernel_ms
+              << "\n";
+  }
+  std::cout << "\n";
+
+  return 0;
 }
