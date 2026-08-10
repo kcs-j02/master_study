@@ -1,0 +1,5 @@
+method,total_ms,task_DFG_construction_ms,task_levelization_ms,task_assignment_ms,resource_allocation_ms,gpu_submit_wait_ms,gpu_kernel_ms,total_allocated_sm,sm_utilization_pct,sm_stream0,sm_stream1,sm_stream2,sm_stream3,sm_stream4
+baseline,534.814,0.0,0.0,0.0,0.0,258.96,258.948,114,100.0,114,0,0,0,0
+existing_method,278.272,0.045,0.193,0.646,0.108,275.021,391.276,114,100.0,114,114,114,114,114
+existing_method_gc,358.717,0.044,0.192,0.635,0.492,354.667,391.214,114,21.05,24,24,24,24,16
+proposed,273.577,0.043,0.191,2.524,0.389,268.129,267.997,114,71.93,82,8,8,8,8

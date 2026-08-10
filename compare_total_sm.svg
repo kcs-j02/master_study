@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400">
 <rect width="100%" height="100%" fill="#fff"/>
-<text x="400.0" y="30" text-anchor="middle" font-size="16">Total allocated SM by method</text>
-<rect x="60.0" y="85.45454545454547" width="188.8888888888889" height="254.54545454545453" fill="#66a3ff" stroke="#333"/>
-<text x="154.44444444444446" y="390" text-anchor="middle" font-size="12">Existing</text>
-<text x="154.44444444444446" y="80.45454545454547" text-anchor="middle" font-size="12">114</text>
-<rect x="286.6666666666667" y="89.92025518341309" width="188.8888888888889" height="250.07974481658692" fill="#66a3ff" stroke="#333"/>
-<text x="381.11111111111114" y="390" text-anchor="middle" font-size="12">Existing+GC</text>
-<text x="381.11111111111114" y="84.92025518341309" text-anchor="middle" font-size="12">112</text>
-<rect x="513.3333333333334" y="85.45454545454547" width="188.8888888888889" height="254.54545454545453" fill="#66a3ff" stroke="#333"/>
-<text x="607.7777777777778" y="390" text-anchor="middle" font-size="12">Proposed</text>
-<text x="607.7777777777778" y="80.45454545454547" text-anchor="middle" font-size="12">114</text>
+<text x="400.0" y="30" text-anchor="middle" font-size="16">SM utilization by method</text>
+<rect x="70.0" y="93.6" width="183.3" height="236.4" fill="#4c78a8" stroke="#333"/>
+<text x="161.7" y="390" text-anchor="middle" font-size="12">existing_method</text>
+<text x="161.7" y="88.6" text-anchor="middle" font-size="12">100.0%</text>
+<rect x="290.0" y="280.2" width="183.3" height="49.8" fill="#4c78a8" stroke="#333"/>
+<text x="381.7" y="390" text-anchor="middle" font-size="12">existing_method_gc</text>
+<text x="381.7" y="275.2" text-anchor="middle" font-size="12">21.1%</text>
+<rect x="510.0" y="160.0" width="183.3" height="170.0" fill="#4c78a8" stroke="#333"/>
+<text x="601.7" y="390" text-anchor="middle" font-size="12">proposed</text>
+<text x="601.7" y="155.0" text-anchor="middle" font-size="12">71.9%</text>
 </svg>

@@ -60,6 +60,7 @@
 - `stg_to_png.py`：STGファイルを可視化（SVG出力）するスクリプト
 - `plot_compare.py`：比較結果CSVからPNGグラフを生成するスクリプト
 - `plot_compare_svg.py`：比較結果CSVからSVGグラフを生成するスクリプト
+- `run_method_comparison.py`：ベースラインと3手法を自動でビルド・実行して比較CSV・グラフを生成する実行スクリプト
 
 方式ごとの実装ディレクトリ
 
@@ -133,7 +134,23 @@ mkdir -p "$HOME/tmp/nsys"
 TMPDIR="$HOME/tmp/nsys" nsys profile --force-overwrite true --trace=cuda,nvtx,osrt -o stg_profile ./main sample.stg
 ```
 
-5. 比較結果の可視化
+5. まとめて比較実行する方法
+
+ベースラインと3つの手法を一括でビルド・実行し、比較CSVとグラフを生成します。
+
+```
+python3 run_method_comparison.py
+```
+
+このスクリプトは以下を実行します。
+
+- `STG/`、`STG_existing_method/`、`STG_existing_method_GC/`、`STG_my_method/` を順にビルド
+- 各手法を `sample.stg` で実行
+- `compare_data.csv` を生成
+- `compare_gpu_time.png` / `compare_total_sm.png` / `compare_per_stream_sm.png`
+- `compare_gpu_time.svg` / `compare_total_sm.svg` / `compare_per_stream_sm.svg`
+
+6. 比較結果の可視化
 
 ルート直下に `compare_data.csv` を置いて実行します。
 
@@ -168,13 +185,13 @@ proposed,82.4,114,64,32,18,0,0
 可視化スクリプトが出力する比較図
 
 - GPU実行時間比較：`compare_gpu_time.png` / `compare_gpu_time.svg`
-- 総SM割当て比較：`compare_total_sm.png` / `compare_total_sm.svg`
+- SM利用率比較：`compare_total_sm.png` / `compare_total_sm.svg`
 - Stream別SM割当て比較：`compare_per_stream_sm.png` / `compare_per_stream_sm.svg`
 
 主要な比較観点
 
 - `gpu_kernel_ms`：小さいほど高速
-- `baseline / gpu_kernel_ms`：速度向上率（speedup）
+- `sm_utilization_pct`：SM利用率。高いほど利用効率が高い
 - `total_allocated_sm`：割当て総SM数
 - `sm_stream*`：StreamごとのSM配分バランス
 

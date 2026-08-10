@@ -1,16 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400">
 <rect width="100%" height="100%" fill="#fff"/>
-<text x="400.0" y="30" text-anchor="middle" font-size="16">GPU kernel time by method</text>
-<rect x="60.0" y="142.61343048035678" width="188.8888888888889" height="197.38656951964322" fill="#66a3ff" stroke="#333"/>
-<text x="154.44444444444446" y="390" text-anchor="middle" font-size="12">Existing</text>
-<text x="154.44444444444446" y="137.61343048035678" text-anchor="middle" font-size="12">275.2 ms
-1.00x</text>
-<rect x="286.6666666666667" y="85.4545454545455" width="188.8888888888889" height="254.5454545454545" fill="#66a3ff" stroke="#333"/>
-<text x="381.11111111111114" y="390" text-anchor="middle" font-size="12">Existing+GC</text>
-<text x="381.11111111111114" y="80.4545454545455" text-anchor="middle" font-size="12">354.9 ms
-0.78x</text>
-<rect x="513.3333333333334" y="147.73516609369432" width="188.8888888888889" height="192.26483390630568" fill="#66a3ff" stroke="#333"/>
-<text x="607.7777777777778" y="390" text-anchor="middle" font-size="12">Proposed</text>
-<text x="607.7777777777778" y="142.73516609369432" text-anchor="middle" font-size="12">268.1 ms
-1.03x</text>
+<text x="400.0" y="30" text-anchor="middle" font-size="16">Relative execution time</text>
+<rect x="70.0" y="93.6" width="183.3" height="236.4" fill="#4c78a8" stroke="#333"/>
+<text x="161.7" y="390" text-anchor="middle" font-size="12">existing_method</text>
+<text x="161.7" y="88.6" text-anchor="middle" font-size="12">1.51x</text>
+<rect x="290.0" y="93.7" width="183.3" height="236.3" fill="#4c78a8" stroke="#333"/>
+<text x="381.7" y="390" text-anchor="middle" font-size="12">existing_method_gc</text>
+<text x="381.7" y="88.7" text-anchor="middle" font-size="12">1.51x</text>
+<rect x="510.0" y="168.1" width="183.3" height="161.9" fill="#4c78a8" stroke="#333"/>
+<text x="601.7" y="390" text-anchor="middle" font-size="12">proposed</text>
+<text x="601.7" y="163.1" text-anchor="middle" font-size="12">1.03x</text>
 </svg>
