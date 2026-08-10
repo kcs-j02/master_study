@@ -100,25 +100,36 @@
 1. ベースライン方式（`STG/`）
 
 ```
-cd STG
-nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main
-./main sample.stg
+cd /home/kobayashi/main/master_study/STG
+rm -f main
+nvcc -O2 -std=c++20 main.cu \
+  -I/home/kobayashi/taskflow \
+  -o main
+
+./main ../common_sample.stg
 ```
 
 2. 既存方式（`STG_existing_method/`）
 
 ```
-cd STG_existing_method
-nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main
-./main sample.stg
+cd /home/kobayashi/main/master_study/STG_existing_method
+rm -f main
+nvcc -O2 -std=c++20 main.cu \
+  -I/home/kobayashi/taskflow \
+  -o main
+
+./main ../common_sample.stg
 ```
 
 3. 提案方式（`STG_my_method/`）
 
 ```
-cd STG_my_method
-nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main
-./main sample.stg
+cd /home/kobayashi/main/master_study/STG_my_method
+rm -f main
+nvcc -O2 -std=c++20 main.cu \
+  -I/home/kobayashi/taskflow \
+  -o main
+./main ../common_sample.stg
 ```
 
 4. Nsight Systemsで計測（任意）

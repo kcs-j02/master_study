@@ -1,5 +1,5 @@
 method,gpu_submit_wait_ms,speedup,min_ms,max_ms
-baseline,258.935,1.0,258.905,258.972
-existing_method,275.142,0.9411,274.954,275.39
-existing_method_gc,354.628,0.7302,354.334,354.879
-proposed,267.242,0.9689,265.286,269.931
+baseline,258.826,1.0,258.786,258.885
+existing_method,275.048,0.941,274.834,275.476
+existing_method_gc,354.419,0.7303,354.241,354.551
+proposed,268.162,0.9652,266.518,270.475
