@@ -1,0 +1,217 @@
+% ==============================================
+% 電気・情報関係学会北陸支部連合大会
+% 講演論文投稿用 pLaTeX2e 版テンプレートファイル(2段組)
+% Usage: platex jhes2026_platex_utf8_template.tex
+% ==============================================
+\documentclass[a4paper,11pt,lualatex,ja=standard]{bxjsarticle}
+
+% 数式
+\usepackage{amsmath,amsfonts}
+\usepackage{bm}
+% 画像
+\usepackage{graphicx}
+\usepackage{float} % 図の位置を固定
+% フローチャート
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+% 評価グラフ
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+% url
+\usepackage{hyperref}
+% ==============================================
+% page format
+%  textwidth  = paperwidth(210mm) -oddsidemargin(13mm) -evensidemargin(13mm)
+%  textheight = paperheight(297mm) -topmargin(20mm-header分) -bottommargin(18mm)
+% ==============================================
+  \setlength{\paperwidth}{210mm}
+  \setlength{\textwidth}{\paperwidth}
+  \addtolength{\textwidth}{-13mm} % oddside margin
+  \addtolength{\textwidth}{-13mm} % evenside margin
+  \setlength{\oddsidemargin}{-1in}
+  \addtolength{\oddsidemargin}{13mm} %%%% ここで左右を調節
+%
+  \setlength{\paperheight}{297mm}
+  \setlength{\textheight}{\paperheight}
+  \addtolength{\textheight}{-28mm} % 文章領域の高さの調整
+  \setlength{\topmargin}{-15mm}    % ここで上下位置を調節
+%
+  \setlength{\headheight}{0in}
+  \setlength{\headsep}{0in}
+  \setlength{\columnsep}{10mm}
+  \setlength{\textfloatsep}{5pt}    % ページ上端・下端の図と本文の間隔
+  \setlength{\intextsep}{5pt}       % 本文中の図と本文の間隔
+  \setlength{\abovecaptionskip}{2pt}% 図とキャプションの間隔
+  \setlength{\belowcaptionskip}{0pt}% キャプション下の間隔
+
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+   {0pt}% 見出し前の余白なし
+   {0pt}% 見出し後の余白なし
+   {\reset@font\large\bfseries}}   %section見出しの文字サイズをlargeに変更
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}%
+   {1.5\Cvs \@plus.5\Cvs \@minus.2\Cvs}%
+   {.5\Cvs \@plus.3\Cvs}%
+   {\reset@font\normalsize\bfseries}} %subsectoin見出しの文字サイズをnormalsizeに変更
+\makeatother
+
+\def\nendo{2026}
+
+\def\secraddress{〒923-1292 石川県能美市旭台 1-1\\
+北陸先端科学技術大学院大学 先端科学技術研究科内}
+\def\secrmail{jhes2026@ml.jaist.ac.jp}
+
+\pagestyle{empty}
+
+\begin{document}
+\twocolumn[% -- １段組にしたい場合は，ここをコメントアウトする
+% ==============================================
+% ページヘッダ(変更禁止)
+% ==============================================
+%
+\begin{center}
+{\Large {\nendo}年度電気・情報関係学会北陸支部連合大会}\\
+\vspace{-2mm}\rule{\textwidth}{1mm}
+\end{center}
+% ==============================================
+% 原稿はここから
+% ==============================================
+%
+% 講演題目 =====================================
+\hspace*{12mm} 
+\begin{minipage}{160mm}  %210mm-13mm-13mm-33mm-33mm
+\begin{center}    %左づめの場合はflushleft
+{\Large \bf
+% 依存タスクのための\nobreak
+\vspace*{4mm}	% 複数行の場合，強制改行して，行間を調整
+依存タスクの重要度に基づくストリーム割当てとSM配分を用いた
+
+単一GPU向け静的スケジューリング・資源割当て手法
+
+}
+\end{center}
+\end{minipage}
+%
+
+\vspace*{4mm}	% ここで行間を調整
+%
+% 著者名（所属） =====================================
+\hspace*{33.0mm} %講演番号用空欄
+\begin{minipage}{118mm}  %210mm-13mm-13mm-33mm-33mm
+\begin{center}    %左づめの場合はflushleft
+{\large
+小林智輝\dag,高野恵輔\dag,井口寧\dag, \ddagger
+
+\dag 北陸先端科学技術大学院大学, \ddagger 金沢大学
+% 小林智輝,高野恵輔,\dag, \dagger井口寧（北陸先端科学技術大学院大学）,井口寧（金沢大学）
+}
+\end{center}
+\end{minipage}
+
+\vspace*{6mm}	% ここで行間を調整
+] % -- １段組にしたい場合は，ここをコメントアウトする
+
+
+% 本文 =====================================
+
+\noindent
+\section{はじめに}
+
+近年，GPU上で依存関係を持つ複数タスクを効率的に並列実行することが重要であり，カーネル間の資源競合を考慮したスケジューリング手法も研究されている\cite{kesco}．しかし，重要タスクと背景タスクがStreaming Multiprocessor（SM）を競合すると，重要タスクの実行が遅延し，全体の完了時間が増大する場合がある．
+本研究の目的は，依存関係から求めたタスク重要度に応じてストリームへのタスク割当てとSM配分を連携させ，全体実行時間を短縮することである．
+\section{提案手法}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, align=center, minimum width=20mm, minimum height=9mm, font=\scriptsize},
+  line/.style={-{Latex[length=2.0mm]}, thick}
+]
+\node[box] (level) {レベル化};
+\node[box, right=7mm of level] (bl) {最長後続経路長};
+\node[box, right=7mm of bl] (prio) {優先度評価};
+\node[box, below=8mm of prio] (assign) {タスク割当て};
+\node[box, left=8mm of assign] (resource) {SM割当て};
+
+\draw[line] (level) -- (bl);
+\draw[line] (bl) -- (prio);
+\draw[line] (prio) -- (assign);
+\draw[line] (assign) -- (resource);
+\end{tikzpicture}
+\caption{提案手法の概要フロー}
+\label{fig:proposal-flow}
+\end{figure}
+
+図\ref{fig:proposal-flow}に提案手法の処理フローを示す．まず，入力STGの依存関係を解析してタスクをレベル化し，各タスクから出口タスクまでの最長後続経路長を算出する．次に，この値をタスク重要度として，重要度の高い実行可能タスクから，各ストリームのSM数と予測完了時刻に基づいて完了時間が最短となるストリームへ割り当てる．最後に，重要タスクを実行するストリーム0へSMを重点配分し，残りのSMをGreen Context（GC）側のストリームへ分割する．GCは，SMを実行コンテキストごとに分割し，資源競合を抑制するCUDAの機能である\cite{cuda-guide}．
+
+比較する3方式はいずれもDFGの依存制約を守って実行する．既存手法では5本の通常ストリームがGPUを共有し，既存手法＋GCでは既存手法と同じ規則でタスクを割り当てた後にSMを均等分割する．提案手法は，重要タスク用ストリームとGCの間でSM配分に差を設け，そのSM数をタスクの予測完了時刻にも反映する点が異なる．
+
+\section{評価}
+
+H100上で3方式を各10回実行した．評価用STGは200タスクのクリティカルチェーンと150個の背景タスクで構成した．
+
+図\ref{fig:speedup}に逐次実行に対する高速化倍率を示す．既存手法は1.424倍，既存手法＋GCは1.104倍，提案手法は1.464倍であり，実行時間はそれぞれ275.08\,ms，354.62\,ms，267.43\,ms（逐次391.6\,ms）となった．図から，重要タスクを24 SMに制限する均等分割では性能が低下する一方，提案手法は既存手法より2.78\%短縮したことが分かる．これは，重要タスクに82 SMを配分し，背景タスクをGCに分離することで，クリティカルチェーンの資源競合を抑えたためである．
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=0.95\columnwidth,
+    height=4.1cm,
+    ylabel={高速化倍率},
+    ylabel style={font=\small},
+    symbolic x coords={既存手法,既存手法+GC,提案手法},
+    xtick=data,
+    ymin=0,
+    ymax=1.7,
+    ymajorgrids=true,
+    grid style={dashed,gray!30},
+    enlarge x limits=0.15,
+    bar width=18pt,
+    xticklabel style={font=\small},
+    tick label style={font=\small},
+    nodes near coords,
+    nodes near coords style={
+        font=\small,
+        yshift=5pt,
+        fill=white,
+        inner sep=1pt,
+        /pgf/number format/fixed,
+        /pgf/number format/precision=3
+    },
+]
+\addplot coordinates {
+    (既存手法,1.424)
+    (既存手法+GC,1.104)
+    (提案手法,1.464)
+};
+\end{axis}
+\end{tikzpicture}
+\caption{逐次実行に対する高速化倍率}
+\label{fig:speedup}
+\end{figure}
+
+\section{まとめ}
+
+タスク重要度に基づくストリーム割当てとSM配分により，本評価用STGで逐次実行に対して1.464倍の高速化と，既存手法に対して2.78\%の実行時間短縮を確認した．単純なSMの均等分割では重要タスクの性能が低下するため，クリティカルチェーンを考慮した資源配分が有効である．
+
+% section 4 ----
+% \section*{参考文献}
+\begin{thebibliography}{99}
+\bibitem{kesco}
+Zejia Lin, et al., ``KeSCo: Compiler-based Kernel Scheduling for Multi-task GPU Applications,'' in 2023 IEEE 41st International Conference on Computer Design (ICCD), 2023.
+
+\bibitem{cuda-guide}
+NVIDIA Corporation, ``CUDA C++ Programming Guide,'' CUDA Toolkit Documentation v13.1, Dec. 2025.
+\end{thebibliography}
+
+
+% ==============================================
+% 原稿はここまで
+% ==============================================
+\end{document}
+
+
+% メモ
+% グラフ

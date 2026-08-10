@@ -1,0 +1,68 @@
+% ==============================================
+% Compare STG_0820_2 vs STG_my_method_2
+% ==============================================
+\documentclass[a4paper,11pt,lualatex,ja=standard]{bxjsarticle}
+\usepackage{amsmath,amsfonts}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{hyperref}
+\usepackage[top=8mm,bottom=8mm,left=8mm,right=8mm]{geometry}
+\usepackage{enumitem}
+\pagestyle{empty}
+
+\begin{document}
+\begin{center}
+{\Large \bfseries 0820\_2 と my\_method\_2 の違い}\
+\vspace{2mm}
+{\small 重要タスクを守るためのSM配分とGC隔離}
+\end{center}
+
+\vspace{3mm}
+
+\noindent
+\textbf{結論:}\
+0820\_2 と my\_method\_2 は、コード上は同じ実装であり、\textbf{問題設定の整理と提案要点の説明をスライドで明確にする}ことが重要です。\
+本発表では、\textbf{重要タスクのSM競合が全体性能を悪化させる}という問題意識を軸に、\textbf{SMを重要タスク側に寄せ、背景タスクをGCで隔離する}方針を示します。
+
+\vspace{2mm}
+\begin{itemize}[leftmargin=7mm,itemsep=1mm]
+  \item \textbf{原因}: 重要タスクと背景タスクが同じGPUのSM資源を共有し、クリティカルチェーンが遅延する。
+  \item \textbf{問題}: 既存の均等分割では、重要タスクに十分なSMを確保できず、実行時間が伸びる。
+  \item \textbf{解決策}: bottom levelが高い\textbf{重要タスク優先}でstream割当を行い、stream 0 に多くのSMを確保し、GC側へ背景タスクを寄せる。
+  \item \textbf{コード特徴}: \verb|simulate_stream_assignment| で予測完了時刻を見積もり、\verb|decide_stream_sm_counts| で通常streamにSMを優先配分する。
+\end{itemize}
+
+\vspace{2mm}
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=8.6cm,
+    height=4.0cm,
+    ylabel={高速化倍率},
+    symbolic x coords={既存手法,既存手法+GC,提案手法},
+    xtick=data,
+    ymin=0,
+    ymax=1.7,
+    bar width=14pt,
+    nodes near coords,
+    nodes near coords style={font=\scriptsize},
+    grid=major,
+    enlarge x limits=0.2,
+]
+\addplot coordinates {(既存手法,1.424) (既存手法+GC,1.104) (提案手法,1.464)};
+\end{axis}
+\end{tikzpicture}
+
+\vspace{2mm}
+\begin{itemize}[leftmargin=7mm,itemsep=1mm]
+  \item 実行時間: 既存 275.08 ms / 既存+GC 354.62 ms / 提案 267.43 ms
+  \item つまり、\textbf{単純なSM均等分割は性能を落とす一方}、\textbf{重要タスク保護型のSM配分は改善に効く}。
+  \item スライドでは「差分」よりも\textbf{「なぜ性能が落ちるか」「どこを改善したか」「結果がどう変わったか」}を見せる形が伝わりやすい。
+\end{itemize}
+
+\end{document}
