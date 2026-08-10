@@ -11,9 +11,9 @@
 // EOF
 
 // 実行はこれ！！！！
+// cd /home/kobayashi/main/master_study/STG_my_method
 // rm -rf main
-// nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main 
-// ./main sample.stg baseline
+// ./main ../common_sample.stg
 
 // nsys profile ./main sample.stg baseline
 
@@ -90,191 +90,35 @@ constexpr int kTaskElementCount =
 
 
 
-static inline std::string trim(const std::string& s) {
-  const auto b = s.find_first_not_of(" \t\r\n");
-  if (b == std::string::npos) return "";
-
-  const auto e = s.find_last_not_of(" \t\r\n");
-  return s.substr(b, e - b + 1);
-}
-
 StgGraph load_stg_without_comm(const std::string& path) {
-  std::ifstream ifs(path);
-  if (!ifs) {
-    throw std::runtime_error("failed to open STG file: " + path);
-  }
-
-  std::vector<std::string> raw_lines;
-  std::string line;
-
-  while (std::getline(ifs, line)) {
-    line = trim(line);
-    if (line.empty()) continue;
-    if (!line.empty() && line[0] == '#') continue;
-
-    raw_lines.push_back(line);
-  }
-
-  if (raw_lines.empty()) {
-    throw std::runtime_error("empty STG file: " + path);
-  }
-
-  StgGraph g;
-
-  {
-    std::istringstream iss(raw_lines[0]);
-    if (!(iss >> g.num_tasks)) {
-      throw std::runtime_error("failed to parse number of tasks");
-    }
-  }
-
-  if (static_cast<int>(raw_lines.size()) < 1 + g.num_tasks) {
-    throw std::runtime_error("STG file has fewer task lines than expected");
-  }
-
-  g.tasks.reserve(g.num_tasks);
-
-  for (int i = 0; i < g.num_tasks; ++i) {
-    std::istringstream iss(raw_lines[1 + i]);
-
-    StgTask t;
-    int pred_count = 0;
-
-    if (!(iss >> t.id >> t.proc_time >> pred_count)) {
-      throw std::runtime_error(
-        "failed to parse task header at task-line index " + std::to_string(i)
-      );
-    }
-
-    if (pred_count < 0) {
-      throw std::runtime_error(
-        "negative predecessor count at task " + std::to_string(t.id)
-      );
-    }
-
-    t.preds.resize(pred_count);
-
-    for (int k = 0; k < pred_count; ++k) {
-      if (!(iss >> t.preds[k])) {
-        throw std::runtime_error(
-          "failed to parse predecessor list at task " + std::to_string(t.id)
-        );
-      }
-    }
-
-    g.tasks.push_back(std::move(t));
-  }
-
-  std::vector<int> ids;
-  ids.reserve(g.tasks.size());
-
-  for (const auto& t : g.tasks) {
-    ids.push_back(t.id);
-  }
-
-  std::sort(ids.begin(), ids.end());
-
-  if (std::adjacent_find(ids.begin(), ids.end()) != ids.end()) {
-    throw std::runtime_error("duplicate task ids found in STG");
-  }
-
-  return g;
+  return stg::load_stg_without_comm(path);
 }
 
-
+static int safe_work_units(int proc_time, int scale, int minimum) {
+  return stg::safe_work_units(proc_time, scale, minimum);
+}
 
 std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
-  std::vector<int> positive_times;
-  positive_times.reserve(g.tasks.size());
+  return stg::make_task_specs_from_stg_common<TaskSpec>(
+      g,
+      [](TaskSpec& s, const stg::StgTask& t, int threshold) {
+        s.parallel_sm_limit = kTaskParallelSmLimit;
 
-  for (const auto& t : g.tasks) {
-    if (t.proc_time > 0) {
-      positive_times.push_back(t.proc_time);
-    }
-  }
-
-  int threshold = 1;
-
-  if (!positive_times.empty()) {
-    std::sort(positive_times.begin(), positive_times.end());
-    threshold = positive_times[positive_times.size() / 2];
-  }
-
-  std::vector<TaskSpec> specs;
-  specs.reserve(g.tasks.size());
-
-  for (const auto& t : g.tasks) {
-    TaskSpec s;
-
-    s.id = t.id;
-    s.proc_time = t.proc_time;
-    s.preds = t.preds;
-    s.parallel_sm_limit = kTaskParallelSmLimit;
-
-    if (t.proc_time > threshold) {
-      s.kind = KernelKind::HEAVY;
-      s.work_units = std::max(1000, t.proc_time * 200);
-    } else {
-      s.kind = KernelKind::LIGHT;
-      s.work_units = std::max(200, std::max(1, t.proc_time) * 80);
-    }
-
-    specs.push_back(std::move(s));
-  }
-
-  return specs;
-}
-
-__global__ void light_kernel(float* data, int n, int iters) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (idx < n) {
-    float x = data[idx];
-
-    #pragma unroll 1
-    for (int i = 0; i < iters; ++i) {
-      x = x * 1.000001f + 0.00001f;
-    }
-
-    data[idx] = x;
-  }
-}
-
-__global__ void heavy_kernel(float* data, int n, int iters) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if (idx < n) {
-    float x = data[idx];
-
-    #pragma unroll 1
-    for (int i = 0; i < iters; ++i) {
-      x = x * 1.000001f + 0.00001f;
-      x = x * 0.999999f + 0.00002f;
-      x = x * 1.0000003f - 0.00001f;
-    }
-
-    data[idx] = x;
-  }
+        if (t.proc_time > threshold) {
+          s.kind = KernelKind::HEAVY;
+          s.work_units = stg::safe_work_units(t.proc_time, 200, 1000);
+        } else {
+          s.kind = KernelKind::LIGHT;
+          s.work_units = stg::safe_work_units(t.proc_time, 80, 200);
+        }
+      });
 }
 
 void launch_task_kernel(const TaskSpec& task,
                         float* dmem,
                         int n,
                         cudaStream_t stream) {
-  if (task.proc_time <= 0) {
-    return;
-  }
-
-  dim3 block(256);
-  dim3 grid((n + block.x - 1) / block.x);
-
-  if (task.kind == KernelKind::HEAVY) {
-    heavy_kernel<<<grid, block, 0, stream>>>(dmem, n, task.work_units);
-  } else {
-    light_kernel<<<grid, block, 0, stream>>>(dmem, n, task.work_units);
-  }
-
-  CUDA_CHECK(cudaGetLastError());
+  stg::launch_task_kernel(task, dmem, n, stream);
 }
 
 /*
@@ -1291,64 +1135,9 @@ BenchResult run_taskflow_cuda(
 }
 
 void print_stg_summary(const std::vector<TaskSpec>& tasks) {
-  int heavy = 0;
-  int light = 0;
-  long long total_proc = 0;
-
-  for (const auto& t : tasks) {
-    total_proc += t.proc_time;
-
-    if (t.kind == KernelKind::HEAVY) {
-      ++heavy;
-    } else {
-      ++light;
-    }
-  }
-
-  const auto task_by_id = make_task_table(tasks);
-  const auto successors =
-      make_successor_table(tasks, task_by_id);
-  const auto bottom_levels =
-      calculate_bottom_levels(
-          tasks,
-          task_by_id,
-          successors
-      );
-
-  double critical_path_proc_time = 0.0;
-
-  for (const auto& [task_id, bottom_level] :
-       bottom_levels) {
-    (void)task_id;
-    critical_path_proc_time = std::max(
-        critical_path_proc_time,
-        bottom_level
-    );
-  }
-
-  const double work_parallelism =
-      critical_path_proc_time <= 0.0
-          ? 0.0
-          : static_cast<double>(total_proc) /
-                critical_path_proc_time;
-
-  std::cout << "===== STG summary =====\n";
-  std::cout << "num_tasks     : " << tasks.size() << "\n";
-  std::cout << "light_tasks   : " << light << "\n";
-  std::cout << "heavy_tasks   : " << heavy << "\n";
-  std::cout << "sum_proc_time : " << total_proc << "\n";
-  std::cout << "task_grid     : "
-            << kTaskParallelSmLimit
-            << " blocks\n";
-  std::cout << "task_SM_limit : "
-            << kTaskParallelSmLimit
-            << " SM\n";
-  std::cout << "critical_path : "
-            << critical_path_proc_time
-            << "\n";
-  std::cout << "work_parallelism: "
-            << work_parallelism
-            << " x\n";
+  stg::print_stg_summary(tasks);
+  std::cout << "task_grid     : " << kTaskParallelSmLimit << " blocks\n";
+  std::cout << "task_SM_limit : " << kTaskParallelSmLimit << " SM\n";
 }
 
 int main(int argc, char** argv) {

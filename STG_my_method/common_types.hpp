@@ -3,31 +3,12 @@
 #include <unordered_map>
 #include <vector>
 
-enum class KernelKind {
-  LIGHT,
-  HEAVY
-};
+#include "../stg_common.hpp"
 
-struct StgTask {
-  int id = -1;
-  int proc_time = 0;
-  std::vector<int> preds;
-};
-
-struct StgGraph {
-  int num_tasks = 0;
-  std::vector<StgTask> tasks;
-};
-
-struct TaskSpec {
-  int id = -1;
-  int proc_time = 0;
-  KernelKind kind = KernelKind::LIGHT;
-  int work_units = 1000;
-  // このタスクが同時に有効利用できるSM数の上限。
-  int parallel_sm_limit = 64;
-  std::vector<int> preds;
-};
+using stg::KernelKind;
+using stg::StgGraph;
+using stg::StgTask;
+using stg::TaskSpec;
 
 struct NodeInfo {
   int id = -1;
