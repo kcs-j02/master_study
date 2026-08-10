@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="400.0" y="30" text-anchor="middle" font-size="16">Total allocated SM by method</text>
+<rect x="60.0" y="85.45454545454547" width="188.8888888888889" height="254.54545454545453" fill="#66a3ff" stroke="#333"/>
+<text x="154.44444444444446" y="390" text-anchor="middle" font-size="12">Existing</text>
+<text x="154.44444444444446" y="80.45454545454547" text-anchor="middle" font-size="12">114</text>
+<rect x="286.6666666666667" y="89.92025518341309" width="188.8888888888889" height="250.07974481658692" fill="#66a3ff" stroke="#333"/>
+<text x="381.11111111111114" y="390" text-anchor="middle" font-size="12">Existing+GC</text>
+<text x="381.11111111111114" y="84.92025518341309" text-anchor="middle" font-size="12">112</text>
+<rect x="513.3333333333334" y="85.45454545454547" width="188.8888888888889" height="254.54545454545453" fill="#66a3ff" stroke="#333"/>
+<text x="607.7777777777778" y="390" text-anchor="middle" font-size="12">Proposed</text>
+<text x="607.7777777777778" y="80.45454545454547" text-anchor="middle" font-size="12">114</text>
+</svg>

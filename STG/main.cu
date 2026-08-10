@@ -24,10 +24,8 @@
 //   ./main sample.stg
 
 #include <cuda_runtime.h>
-#include <taskflow/taskflow.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -35,7 +33,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "bench_timer.hpp"
@@ -255,29 +252,19 @@ void launch_task_kernel(const TaskSpec& task,
 }
 
 struct RuntimeResources {
-  cudaStream_t baseline0 {};
-  cudaStream_t baseline1 {};
+  cudaStream_t sequential {};
 };
 
 RuntimeResources make_runtime_resources() {
   RuntimeResources rr;
 
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline0));
-  CUDA_CHECK(cudaStreamCreate(&rr.baseline1));
+  CUDA_CHECK(cudaStreamCreate(&rr.sequential));
 
   return rr;
 }
 
 void destroy_runtime_resources(RuntimeResources& rr) {
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline0));
-  CUDA_CHECK(cudaStreamDestroy(rr.baseline1));
-}
-
-cudaStream_t select_baseline_stream(RuntimeResources& rr) {
-  static std::atomic<int> turn{0};
-
-  int v = turn.fetch_add(1, std::memory_order_relaxed);
-  return (v % 2 == 0) ? rr.baseline0 : rr.baseline1;
+  CUDA_CHECK(cudaStreamDestroy(rr.sequential));
 }
 
 BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
@@ -294,10 +281,6 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
 
   RuntimeResources rr = make_runtime_resources();
 
-  tf::Executor executor(8);
-  tf::Taskflow tf;
-
-  std::unordered_map<int, tf::Task> task_nodes;
   std::unordered_map<int, cudaEvent_t> done_events;
   std::unordered_map<int, cudaEvent_t> kernel_start_events;
   std::unordered_map<int, cudaEvent_t> kernel_stop_events;
@@ -316,50 +299,17 @@ BenchResult run_taskflow_cuda(const std::vector<TaskSpec>& tasks) {
     kernel_stop_events.emplace(t.id, stop_ev);
   }
 
-  for (const auto& t : tasks) {
-    tf::Task node = tf.emplace([&, t]() {
-      cudaStream_t stream = select_baseline_stream(rr);
-
-      for (int pred : t.preds) {
-        auto it = done_events.find(pred);
-
-        if (it == done_events.end()) {
-          throw std::runtime_error(
-            "unknown predecessor id: " + std::to_string(pred)
-          );
-        }
-
-        CUDA_CHECK(cudaStreamWaitEvent(stream, it->second, 0));
-      }
-
-      CUDA_CHECK(cudaEventRecord(kernel_start_events.at(t.id), stream));
-
-      launch_task_kernel(t, dmem, N, stream);
-
-      CUDA_CHECK(cudaEventRecord(kernel_stop_events.at(t.id), stream));
-      CUDA_CHECK(cudaEventRecord(done_events.at(t.id), stream));
-    });
-
-    node.name(std::to_string(t.id));
-    task_nodes.emplace(t.id, node);
-  }
-
-  for (const auto& t : tasks) {
-    for (int pred : t.preds) {
-      auto pred_it = task_nodes.find(pred);
-      auto curr_it = task_nodes.find(t.id);
-
-      if (pred_it == task_nodes.end() || curr_it == task_nodes.end()) {
-        throw std::runtime_error("edge references unknown task id");
-      }
-
-      pred_it->second.precede(curr_it->second);
-    }
-  }
-
   auto submit_start = Clock::now();
 
-  executor.run(tf).wait();
+  for (const auto& t : tasks) {
+    CUDA_CHECK(cudaEventRecord(kernel_start_events.at(t.id), rr.sequential));
+
+    launch_task_kernel(t, dmem, N, rr.sequential);
+
+    CUDA_CHECK(cudaEventRecord(kernel_stop_events.at(t.id), rr.sequential));
+    CUDA_CHECK(cudaEventRecord(done_events.at(t.id), rr.sequential));
+  }
+
   CUDA_CHECK(cudaDeviceSynchronize());
 
   auto submit_end = Clock::now();
