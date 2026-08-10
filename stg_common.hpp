@@ -205,7 +205,7 @@ inline std::vector<TaskSpecT> make_task_specs_from_stg_common(
   return specs;
 }
 
-inline __global__ void light_kernel(float* data, int n, int iters) {
+ __global__ void light_kernel(float* data, int n, int iters) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n) {
     return;
@@ -220,7 +220,7 @@ inline __global__ void light_kernel(float* data, int n, int iters) {
   data[idx] = x;
 }
 
-inline __global__ void heavy_kernel(float* data, int n, int iters) {
+ __global__ void heavy_kernel(float* data, int n, int iters) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n) {
     return;

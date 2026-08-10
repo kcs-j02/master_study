@@ -1,260 +1,205 @@
 // ============================================================
 // Baseline
-// STGの依存関係を守り、単一CUDA streamで逐次実行
+//
+// 提案手法と同じタスク・同じKernel条件で、
+// 単一CUDA streamによる逐次実行を測定する。
+//
+// 評価指標:
+//   gpu_kernel_ms
 //
 // Build:
-// nvcc -O2 -std=c++20 main.cu -I/home/kobayashi/taskflow -o main
+//   nvcc -O2 -std=c++20 main.cu \
+//     -I/home/kobayashi/taskflow \
+//     -o main
 //
 // Run:
-// ./main sample.stg
-//
-// 比較Pythonからも
-// ./main sample.stg
-// でそのまま実行可能
+//   ./main ../common_sample.stg
 // ============================================================
 
 #include <cuda_runtime.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
-#include <functional>
 #include <iostream>
-#include <limits>
-#include <queue>
-#include <sstream>
-#include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "bench_timer.hpp"
 #include "../stg_common.hpp"
 
-using StgTask = stg::StgTask;
-using StgGraph = stg::StgGraph;
+
+using StgTask   = stg::StgTask;
+using StgGraph  = stg::StgGraph;
 using KernelKind = stg::KernelKind;
-using TaskSpec = stg::TaskSpec;
+using TaskSpec  = stg::TaskSpec;
 
 
 // ============================================================
 // CUDA error check
 // ============================================================
 
-#define CUDA_CHECK(expr)                                              \
-  do {                                                                \
-    const cudaError_t err__ = (expr);                                 \
-    if (err__ != cudaSuccess) {                                       \
-      std::cerr << "CUDA error: "                                     \
-                << cudaGetErrorString(err__)                          \
-                << " at "                                             \
-                << __FILE__                                           \
-                << ":"                                                \
-                << __LINE__                                           \
-                << "\n";                                              \
-      std::exit(EXIT_FAILURE);                                        \
-    }                                                                 \
+#define CUDA_CHECK(expr)                                      \
+  do {                                                        \
+    const cudaError_t err__ = (expr);                         \
+    if (err__ != cudaSuccess) {                               \
+      std::cerr                                               \
+        << "CUDA error: "                                     \
+        << cudaGetErrorString(err__)                          \
+        << " at "                                             \
+        << __FILE__                                           \
+        << ":"                                                \
+        << __LINE__                                           \
+        << "\n";                                              \
+      std::exit(EXIT_FAILURE);                                \
+    }                                                         \
   } while (0)
 
 
 // ============================================================
-// STG load / task spec generation
+// 提案手法と完全に同じKernelサイズ
+//
+// 1 task = 最大64 blocks
+// 1 block = 256 threads
+// ============================================================
+
+constexpr int kTaskParallelSmLimit = 64;
+
+constexpr int kTaskElementCount =
+    kTaskParallelSmLimit * 256;
+
+
+// ============================================================
+// STG load
 // ============================================================
 
 StgGraph load_stg_without_comm(
-  const std::string& path
+    const std::string& path
 ) {
-  return stg::load_stg_without_comm(path);
-}
-
-
-static int safe_work_units(
-  int proc_time,
-  int scale,
-  int minimum
-) {
-  return stg::safe_work_units(
-    proc_time,
-    scale,
-    minimum
-  );
-}
-
-
-std::vector<TaskSpec> make_task_specs_from_stg(
-  const StgGraph& graph
-) {
-  return stg::make_task_specs_from_stg_common<TaskSpec>(
-    graph,
-    [](
-      TaskSpec& spec,
-      const stg::StgTask& task,
-      int threshold
-    ) {
-      if (task.proc_time > threshold) {
-
-        spec.kind =
-          KernelKind::HEAVY;
-
-        spec.work_units =
-          stg::safe_work_units(
-            task.proc_time,
-            200,
-            1000
-          );
-      }
-      else {
-
-        spec.kind =
-          KernelKind::LIGHT;
-
-        spec.work_units =
-          stg::safe_work_units(
-            task.proc_time,
-            80,
-            200
-          );
-      }
-    }
+  return stg::load_stg_without_comm(
+      path
   );
 }
 
 
 // ============================================================
-// GPU Kernel
+// TaskSpec生成
+//
+// 提案手法と同じ条件
 // ============================================================
 
-__global__
-void light_kernel(
-  float* data,
-  int n,
-  int iters
+std::vector<TaskSpec>
+make_task_specs_from_stg(
+    const StgGraph& graph
 ) {
-  const int idx =
-    blockIdx.x *
-    blockDim.x +
-    threadIdx.x;
+  return
+    stg::make_task_specs_from_stg_common<TaskSpec>(
+      graph,
 
-  if (idx >= n) {
-    return;
-  }
+      [](
+          TaskSpec& spec,
+          const stg::StgTask& task,
+          int threshold
+      ) {
 
-  float x =
-    data[idx];
-
-#pragma unroll 1
-  for (
-    int i = 0;
-    i < iters;
-    ++i
-  ) {
-    x =
-      x * 1.000001f
-      + 0.00001f;
-  }
-
-  data[idx] =
-    x;
-}
+        // 提案手法と同じ
+        spec.parallel_sm_limit =
+            kTaskParallelSmLimit;
 
 
-// ============================================================
+        // ----------------------------------------------------
+        // HEAVY
+        // ----------------------------------------------------
 
-__global__
-void heavy_kernel(
-  float* data,
-  int n,
-  int iters
-) {
-  const int idx =
-    blockIdx.x *
-    blockDim.x +
-    threadIdx.x;
+        if (
+          task.proc_time >
+          threshold
+        ) {
 
-  if (idx >= n) {
-    return;
-  }
+          spec.kind =
+              KernelKind::HEAVY;
 
-  float x =
-    data[idx];
+          spec.work_units =
+              stg::safe_work_units(
+                  task.proc_time,
+                  200,
+                  1000
+              );
+        }
 
-#pragma unroll 1
-  for (
-    int i = 0;
-    i < iters;
-    ++i
-  ) {
-    x =
-      x * 1.000001f
-      + 0.00001f;
+        // ----------------------------------------------------
+        // LIGHT
+        // ----------------------------------------------------
 
-    x =
-      x * 0.999999f
-      + 0.00002f;
+        else {
 
-    x =
-      x * 1.0000003f
-      - 0.00001f;
-  }
+          spec.kind =
+              KernelKind::LIGHT;
 
-  data[idx] =
-    x;
+          spec.work_units =
+              stg::safe_work_units(
+                  task.proc_time,
+                  80,
+                  200
+              );
+        }
+      }
+    );
 }
 
 
 // ============================================================
 // Kernel launch
+//
+// stg_common.hpp の共通Kernelを使用するため、
+// proposed と baseline でKernel自体も同じ。
 // ============================================================
 
 void launch_task_kernel(
-  const TaskSpec& task,
-  float* dmem,
-  int n,
-  cudaStream_t stream
+    const TaskSpec& task,
+    float* dmem,
+    int n,
+    cudaStream_t stream
 ) {
   stg::launch_task_kernel(
-    task,
-    dmem,
-    n,
-    stream
+      task,
+      dmem,
+      n,
+      stream
   );
 }
 
 
 // ============================================================
-// DAGをトポロジカルソート
-//
-// 依存関係を守った実行順を作る
-//
-// 同時に実行可能なタスクは
-// task IDの小さい順
+// トポロジカル順序
 // ============================================================
 
 std::vector<std::size_t>
 make_topological_order(
-  const std::vector<TaskSpec>& tasks
+    const std::vector<TaskSpec>& tasks
 ) {
-  return stg::make_topological_order(
-    tasks
-  );
+  return
+    stg::make_topological_order(
+        tasks
+    );
 }
 
 
 // ============================================================
-// Baseline execution
+// Baseline逐次実行
 //
-// 依存関係解析
-//       ↓
-// トポロジカルソート
-//       ↓
-// 単一CUDA stream
-//       ↓
-// 全タスク逐次実行
+// 1 stream
+// ↓
+// 全タスクを依存関係順に投入
+// ↓
+// CUDA Eventで
+// 最初のKernel開始～最後のKernel終了
+// を測定
+//
+// proposed の gpu_kernel_ms と同じ指標
 // ============================================================
 
 BenchResult run_sequential_cuda(
-  const std::vector<TaskSpec>& tasks
+    const std::vector<TaskSpec>& tasks
 ) {
   BenchResult bench{};
 
@@ -264,235 +209,235 @@ BenchResult run_sequential_cuda(
   // ==========================================================
 
   const auto total_start =
-    Clock::now();
+      Clock::now();
 
 
   // ==========================================================
-  // Levelization / DAG order
+  // DAG順序生成
   // ==========================================================
 
   const auto levelization_start =
-    Clock::now();
+      Clock::now();
 
 
   const std::vector<std::size_t> order =
-    make_topological_order(
-      tasks
-    );
+      make_topological_order(
+          tasks
+      );
 
 
   const auto levelization_end =
-    Clock::now();
+      Clock::now();
 
 
   // ==========================================================
-  // GPU resource allocation
+  // proposed と同じ task size
   // ==========================================================
 
   constexpr int N =
-    1 << 20;
+      kTaskElementCount;
 
 
   float* dmem =
-    nullptr;
+      nullptr;
 
 
-  cudaStream_t stream{};
+  cudaStream_t stream =
+      nullptr;
 
 
-  cudaEvent_t kernel_start{};
-  cudaEvent_t kernel_stop{};
+  cudaEvent_t start_event =
+      nullptr;
 
+
+  cudaEvent_t stop_event =
+      nullptr;
+
+
+  // ==========================================================
+  // resource allocation
+  // ==========================================================
 
   const auto resource_start =
-    Clock::now();
+      Clock::now();
 
 
   CUDA_CHECK(
-    cudaMalloc(
-      &dmem,
-      N * sizeof(float)
-    )
+      cudaMalloc(
+          &dmem,
+          static_cast<std::size_t>(N)
+              * sizeof(float)
+      )
   );
 
 
   CUDA_CHECK(
-    cudaStreamCreateWithFlags(
-      &stream,
-      cudaStreamNonBlocking
-    )
+      cudaMemset(
+          dmem,
+          0,
+          static_cast<std::size_t>(N)
+              * sizeof(float)
+      )
   );
 
 
   CUDA_CHECK(
-    cudaEventCreate(
-      &kernel_start
-    )
+      cudaStreamCreateWithFlags(
+          &stream,
+          cudaStreamNonBlocking
+      )
   );
 
 
   CUDA_CHECK(
-    cudaEventCreate(
-      &kernel_stop
-    )
+      cudaEventCreate(
+          &start_event
+      )
   );
 
 
   CUDA_CHECK(
-    cudaMemsetAsync(
-      dmem,
-      0,
-      N * sizeof(float),
-      stream
-    )
-  );
-
-
-  CUDA_CHECK(
-    cudaStreamSynchronize(
-      stream
-    )
+      cudaEventCreate(
+          &stop_event
+      )
   );
 
 
   const auto resource_end =
-    Clock::now();
+      Clock::now();
 
 
   // ==========================================================
   // GPU submit + wait
   //
-  // この時間を比較Pythonで使用
+  // これは参考値として残す。
+  // 高速化率の比較には gpu_kernel_ms を使用する。
   // ==========================================================
 
   const auto submit_start =
-    Clock::now();
+      Clock::now();
 
 
   // ----------------------------------------------------------
-  // GPU実行開始イベント
+  // 最初のKernelの直前
   // ----------------------------------------------------------
 
   CUDA_CHECK(
-    cudaEventRecord(
-      kernel_start,
-      stream
-    )
+      cudaEventRecord(
+          start_event,
+          stream
+      )
   );
 
 
   // ----------------------------------------------------------
-  // トポロジカル順に単一streamへ投入
+  // 1 streamへ全タスク投入
   //
-  // 同じstreamなので完全逐次
+  // 同一streamなので完全逐次
   // ----------------------------------------------------------
 
   for (
-    const std::size_t task_index
-    :
-    order
+      const std::size_t task_index
+      :
+      order
   ) {
 
     const TaskSpec& task =
-      tasks[
-        task_index
-      ];
+        tasks.at(
+            task_index
+        );
 
 
     launch_task_kernel(
-      task,
-      dmem,
-      N,
-      stream
+        task,
+        dmem,
+        N,
+        stream
     );
   }
 
 
   // ----------------------------------------------------------
-  // 最終Kernelの後ろ
+  // 最後のKernelの直後
   // ----------------------------------------------------------
 
   CUDA_CHECK(
-    cudaEventRecord(
-      kernel_stop,
-      stream
-    )
+      cudaEventRecord(
+          stop_event,
+          stream
+      )
   );
 
 
   // ----------------------------------------------------------
-  // GPU完了待ち
+  // 全Kernel終了待ち
   // ----------------------------------------------------------
 
   CUDA_CHECK(
-    cudaEventSynchronize(
-      kernel_stop
-    )
+      cudaEventSynchronize(
+          stop_event
+      )
   );
 
 
   const auto submit_end =
-    Clock::now();
+      Clock::now();
 
 
   // ==========================================================
-  // gpu_kernel_ms
+  // proposedと同じgpu_kernel_ms
   // ==========================================================
 
-  float kernel_ms =
-    0.0f;
+  float gpu_kernel_ms =
+      0.0f;
 
 
   CUDA_CHECK(
-    cudaEventElapsedTime(
-      &kernel_ms,
-      kernel_start,
-      kernel_stop
-    )
+      cudaEventElapsedTime(
+          &gpu_kernel_ms,
+          start_event,
+          stop_event
+      )
   );
 
 
   // ==========================================================
-  // BenchResult
+  // Result
   // ==========================================================
 
-  bench.gpu_submit_wait_ms =
-    elapsed_ms(
-      submit_start,
-      submit_end
-    );
-
-
   bench.gpu_kernel_ms =
-    static_cast<double>(
-      kernel_ms
-    );
+      static_cast<double>(
+          gpu_kernel_ms
+      );
 
 
-  // baselineでは特別なDFG構築処理なし
+  bench.gpu_submit_wait_ms =
+      elapsed_ms(
+          submit_start,
+          submit_end
+      );
+
+
   bench.task_DFG_construction_ms =
-    0.0;
+      0.0;
 
 
-  // トポロジカルソート時間
   bench.task_levelization_ms =
-    elapsed_ms(
-      levelization_start,
-      levelization_end
-    );
+      elapsed_ms(
+          levelization_start,
+          levelization_end
+      );
 
 
-  // stream割当なし
   bench.task_assignment_ms =
-    0.0;
+      0.0;
 
 
-  // malloc / stream / event作成
   bench.resource_allocation_ms =
-    elapsed_ms(
-      resource_start,
-      resource_end
-    );
+      elapsed_ms(
+          resource_start,
+          resource_end
+      );
 
 
   // ==========================================================
@@ -500,30 +445,30 @@ BenchResult run_sequential_cuda(
   // ==========================================================
 
   CUDA_CHECK(
-    cudaEventDestroy(
-      kernel_start
-    )
+      cudaEventDestroy(
+          start_event
+      )
   );
 
 
   CUDA_CHECK(
-    cudaEventDestroy(
-      kernel_stop
-    )
+      cudaEventDestroy(
+          stop_event
+      )
   );
 
 
   CUDA_CHECK(
-    cudaStreamDestroy(
-      stream
-    )
+      cudaStreamDestroy(
+          stream
+      )
   );
 
 
   CUDA_CHECK(
-    cudaFree(
-      dmem
-    )
+      cudaFree(
+          dmem
+      )
   );
 
 
@@ -532,14 +477,14 @@ BenchResult run_sequential_cuda(
   // ==========================================================
 
   const auto total_end =
-    Clock::now();
+      Clock::now();
 
 
   bench.total_ms =
-    elapsed_ms(
-      total_start,
-      total_end
-    );
+      elapsed_ms(
+          total_start,
+          total_end
+      );
 
 
   return bench;
@@ -547,46 +492,27 @@ BenchResult run_sequential_cuda(
 
 
 // ============================================================
-// STG summary
+// Summary
 // ============================================================
 
 void print_stg_summary(
-  const std::vector<TaskSpec>& tasks
+    const std::vector<TaskSpec>& tasks
 ) {
-  // ----------------------------------------------------------
-  // 既存のサマリ
-  // ----------------------------------------------------------
-
   stg::print_stg_summary(
-    tasks
+      tasks
   );
 
 
-  // ----------------------------------------------------------
-  // 全タスクの proc_time の総和
-  // ----------------------------------------------------------
-
-  long long total_task_proc_time =
-    0;
-
-
-  for (
-    const auto& task
-    :
-    tasks
-  ) {
-
-    total_task_proc_time +=
-      static_cast<long long>(
-        task.proc_time
-      );
-  }
+  std::cout
+      << "task_grid      : "
+      << kTaskParallelSmLimit
+      << " blocks\n";
 
 
   std::cout
-    << "total task proc_time : "
-    << total_task_proc_time
-    << "\n";
+      << "task_SM_limit  : "
+      << kTaskParallelSmLimit
+      << " SM\n";
 }
 
 
@@ -595,23 +521,15 @@ void print_stg_summary(
 // ============================================================
 
 int main(
-  int argc,
-  char** argv
+    int argc,
+    char** argv
 ) {
-  // ----------------------------------------------------------
-  // 比較Pythonとの互換性のため
-  //
-  // ./main sample.stg
-  //
-  // で実行できる
-  // ----------------------------------------------------------
-
   if (argc < 2) {
 
     std::cerr
-      << "Usage: "
-      << argv[0]
-      << " input.stg\n";
+        << "Usage: "
+        << argv[0]
+        << " input.stg\n";
 
     return EXIT_FAILURE;
   }
@@ -619,68 +537,86 @@ int main(
 
   try {
 
-    // --------------------------------------------------------
-    // STG load
-    // --------------------------------------------------------
+    // ========================================================
+    // STG
+    // ========================================================
 
     const StgGraph graph =
-      load_stg_without_comm(
-        argv[1]
-      );
+        load_stg_without_comm(
+            argv[1]
+        );
 
 
-    // --------------------------------------------------------
-    // Task生成
-    // --------------------------------------------------------
+    // ========================================================
+    // TaskSpec
+    // ========================================================
 
     const std::vector<TaskSpec> tasks =
-      make_task_specs_from_stg(
-        graph
-      );
+        make_task_specs_from_stg(
+            graph
+        );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // Summary
-    // --------------------------------------------------------
+    // ========================================================
 
     print_stg_summary(
-      tasks
+        tasks
     );
 
 
-    // --------------------------------------------------------
-    // Baseline
-    // --------------------------------------------------------
+    // ========================================================
+    // Sequential baseline
+    // ========================================================
 
     const BenchResult result =
-      run_sequential_cuda(
-        tasks
-      );
+        run_sequential_cuda(
+            tasks
+        );
 
 
-    // --------------------------------------------------------
-    // 出力
+    // ========================================================
+    // 比較用の値
     //
-    // 比較Pythonのparse_result()と互換
-    // --------------------------------------------------------
+    // proposed側の
+    //
+    // proposed gpu_kernel_ms
+    //
+    // と直接比較する値
+    // ========================================================
 
     std::cout
-      << "mode: baseline\n";
+        << "===== Baseline GPU measurement =====\n";
+
+
+    std::cout
+        << "baseline gpu_kernel_ms: "
+        << result.gpu_kernel_ms
+        << " ms\n";
+
+
+    std::cout
+        << "====================================\n";
+
+
+    std::cout
+        << "mode: baseline\n";
 
 
     print_result(
-      result
+        result
     );
   }
 
   catch (
-    const std::exception& e
+      const std::exception& error
   ) {
 
     std::cerr
-      << "exception: "
-      << e.what()
-      << "\n";
+        << "exception: "
+        << error.what()
+        << "\n";
 
     return EXIT_FAILURE;
   }
