@@ -135,14 +135,15 @@ nvcc -O2 -std=c++20 main.cu \
 4. Nsight Systemsで計測（任意）
 
 ```
-nsys profile --force-overwrite true --trace=cuda,nvtx,osrt -o stg_profile ./main sample.stg
-```
-
-`/tmp` が使えない環境では、ユーザディレクトリ配下に一時領域を指定します。
-
-```
 mkdir -p "$HOME/tmp/nsys"
-TMPDIR="$HOME/tmp/nsys" nsys profile --force-overwrite true --trace=cuda,nvtx,osrt -o stg_profile ./main sample.stg
+
+TMPDIR="$HOME/tmp/nsys" nsys profile \
+  --force-overwrite true \
+  --trace=cuda,nvtx,osrt \
+  --gpu-metrics-devices=0 \
+  --gpu-metrics-frequency=10000 \
+  -o stg_profile \
+  ./main ../common_sample.stg
 ```
 
 5. まとめて比較実行する方法
