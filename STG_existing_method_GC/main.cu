@@ -52,6 +52,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -71,15 +73,9 @@
 #include "task_assignment.hpp"
 #include "resource_allocation.hpp"
 
-#define CUDA_CHECK(expr)                                                      \
-  do {                                                                        \
-    cudaError_t _err = (expr);                                                \
-    if (_err != cudaSuccess) {                                                \
-      std::cerr << "CUDA error: " << cudaGetErrorString(_err)                 \
-                << " at " << __FILE__ << ":" << __LINE__ << std::endl;        \
-      std::exit(EXIT_FAILURE);                                                \
-    }                                                                         \
-  } while (0)
+namespace fs = std::filesystem;
+
+
 
 // 1タスクは最大64 SM分のblockを持つ。
 // 単体実行では114 SMを使い切らず、独立タスクの並列実行で
@@ -88,14 +84,20 @@ constexpr int kTaskParallelSmLimit = 64;
 constexpr int kTaskElementCount =
     kTaskParallelSmLimit * 256;
 
+constexpr const char* kNsysCommand = "nsys";
+constexpr const char* kNsysTmpRoot = "/home/kobayashi/tmp/nsys";
+constexpr int kGpuMetricsDevice = 0;
+constexpr int kGpuMetricsFrequency = 10000;
+
 
 
 StgGraph load_stg_without_comm(const std::string& path) {
   return stg::load_stg_without_comm(path);
 }
 
-static int safe_work_units(int proc_time, int scale, int minimum) {
-  return stg::safe_work_units(proc_time, scale, minimum);
+[[maybe_unused]]
+static int safe_work_units(int proc_time, int scale, int minimum) {  
+    return stg::safe_work_units(proc_time, scale, minimum);
 }
 
 std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
@@ -119,6 +121,111 @@ void launch_task_kernel(const TaskSpec& task,
                         int n,
                         cudaStream_t stream) {
   stg::launch_task_kernel(task, dmem, n, stream);
+}
+
+double parse_sm_active_average_from_sqlite(const fs::path& sqlite_path) {
+  const std::string script = R"PY(
+import sqlite3, sys
+
+db = sys.argv[1]
+con = sqlite3.connect(db)
+cur = con.cursor()
+rows = cur.execute("""
+SELECT g.timestamp, g.value
+FROM GPU_METRICS AS g
+JOIN TARGET_INFO_GPU_METRICS AS info USING (metricId)
+WHERE info.metricName LIKE 'SMs Active%'
+ORDER BY g.timestamp
+""").fetchall()
+con.close()
+
+values = [float(row[1]) for row in rows]
+if not values:
+    raise SystemExit('SMs Active samples were not found')
+
+active_indices = [index for index, value in enumerate(values) if value > 0.0]
+if not active_indices:
+    raise SystemExit('All SMs Active samples were 0%')
+
+subset = values[active_indices[0]:active_indices[-1] + 1]
+print(sum(subset) / len(subset))
+)PY";
+
+  const std::string command =
+      "python3 - \"" + sqlite_path.string() + "\" <<'PY'\n" +
+      script +
+      "\nPY\n";
+
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) {
+    throw std::runtime_error("failed to run python3 for sqlite parsing");
+  }
+
+  std::string output;
+  char buffer[256];
+  while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    output += buffer;
+  }
+
+  const int exit_code = pclose(pipe);
+  if (exit_code != 0) {
+    throw std::runtime_error("python3 sqlite parsing failed: " + output);
+  }
+
+  return std::stod(output);
+}
+
+int run_nsys_sm_active_measurement(const fs::path& input_stg,
+                                   const fs::path& self_path) {
+  fs::create_directories(kNsysTmpRoot);
+
+  const fs::path tmp_dir =
+      fs::temp_directory_path() / fs::path("sm_active_existing_gc");
+  fs::create_directories(tmp_dir);
+
+  const fs::path profile_prefix = tmp_dir / "profile";
+  const fs::path report_path = tmp_dir / "profile.nsys-rep";
+  const fs::path sqlite_path = tmp_dir / "profile.sqlite";
+
+  const std::string profile_cmd =
+      std::string(kNsysCommand) +
+      " profile --force-overwrite=true --sample=none --cpuctxsw=none --trace=cuda "
+      "--gpu-metrics-devices=" + std::to_string(kGpuMetricsDevice) +
+      " --gpu-metrics-frequency=" + std::to_string(kGpuMetricsFrequency) +
+      " --output=" + profile_prefix.string() +
+      " " + self_path.string() +
+      " --run-once " + input_stg.string();
+
+  const int profile_rc = std::system(profile_cmd.c_str());
+  if (profile_rc != 0) {
+    throw std::runtime_error("nsys profile command failed");
+  }
+
+  if (!fs::exists(report_path)) {
+    throw std::runtime_error(
+        "Nsight report not found: " + report_path.string());
+  }
+
+  const std::string export_cmd =
+      std::string(kNsysCommand) +
+      " export --type=sqlite --force-overwrite=true --output=" +
+      sqlite_path.string() +
+      " " + report_path.string();
+
+  const int export_rc = std::system(export_cmd.c_str());
+  if (export_rc != 0) {
+    throw std::runtime_error("nsys export command failed");
+  }
+
+  if (!fs::exists(sqlite_path)) {
+    throw std::runtime_error(
+        "Nsight SQLite export not found: " + sqlite_path.string());
+  }
+
+  const double sm_active_pct =
+      parse_sm_active_average_from_sqlite(sqlite_path);
+  std::cout << "sm_active_pct: " << sm_active_pct << " %\n";
+  return 0;
 }
 
 /*
@@ -925,16 +1032,37 @@ void print_stg_summary(const std::vector<TaskSpec>& tasks) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 2) {
+    if (argc < 2) {
     std::cerr
         << "Usage: "
-        << argv[0]
-        << " input.stg\n";
+                << argv[0]
+                << " [--run-once input.stg | --measure-sm-active input.stg]\n";
 
     return 1;
   }
 
   try {
+        if (argc >= 3 && std::string(argv[1]) == "--measure-sm-active") {
+            return run_nsys_sm_active_measurement(fs::path(argv[2]), fs::path(argv[0]));
+        }
+
+        if (argc >= 3 && std::string(argv[1]) == "--run-once") {
+            const StgGraph graph =
+                    load_stg_without_comm(argv[2]);
+
+            const auto tasks =
+                    make_task_specs_from_stg(graph);
+
+            print_stg_summary(tasks);
+
+            const BenchResult result =
+                    run_taskflow_cuda(tasks);
+
+            std::cout << "mode: existing_method_GC\n";
+            print_result(result);
+            return 0;
+        }
+
     const StgGraph graph =
         load_stg_without_comm(argv[1]);
 
@@ -943,39 +1071,8 @@ int main(int argc, char** argv) {
 
     print_stg_summary(tasks);
 
-    const double sequential_gpu_kernel_ms =
-        run_sequential_cuda(tasks);
-
     const BenchResult result =
         run_taskflow_cuda(tasks);
-
-    const double measured_speedup =
-        result.gpu_kernel_ms <= 0.0
-            ? 0.0
-            : sequential_gpu_kernel_ms /
-                  result.gpu_kernel_ms;
-
-    const double measured_reduction_percent =
-        sequential_gpu_kernel_ms <= 0.0
-            ? 0.0
-            : (sequential_gpu_kernel_ms -
-               result.gpu_kernel_ms) /
-                  sequential_gpu_kernel_ms * 100.0;
-
-    std::cout << "===== Sequential comparison =====\n";
-    std::cout << "sequential gpu_kernel_ms: "
-              << sequential_gpu_kernel_ms
-              << " ms\n";
-    std::cout << "existing+GC gpu_kernel_ms: "
-              << result.gpu_kernel_ms
-              << " ms\n";
-    std::cout << "measured speedup          : "
-              << measured_speedup
-              << " x\n";
-    std::cout << "measured reduction        : "
-              << measured_reduction_percent
-              << " %\n";
-    std::cout << "=================================\n";
 
     std::cout << "mode: existing_method_GC\n";
     print_result(result);

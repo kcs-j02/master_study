@@ -1,50 +1,3 @@
-
-
-// kobayashi@h100:~/main/STG$ cat > sample.stg << 'EOF'
-// 6
-// 0 0 0
-// 1 10 1 0
-// 2 30 1 0
-// 3 5 1 1
-// 4 40 2 1 2
-// 5 0 2 3 4
-// EOF
-
-// 実行はこれ！！！！
-// cd /home/kobayashi/main/master_study/STG_my_method
-// rm -rf main
-// ./main ../common_sample.stg
-
-// nsys profile ./main sample.stg baseline
-
-// GPU使用率
-// nsys profile \
-//   --force-overwrite true \
-//   --trace=cuda,nvtx,osrt \
-//   --gpu-metrics-devices=0 \
-//   --gpu-metrics-frequency=10000 \
-//   -o stg_profile \
-//   ./main sample.stg
-
-// mkdir -p "$HOME/tmp/nsys"
-// TMPDIR="$HOME/tmp/nsys" nsys profile \
-//   --force-overwrite true \
-//   --trace=cuda,nvtx,osrt \
-//   --gpu-metrics-devices=0 \
-//   --gpu-metrics-frequency=10000 \
-//   -o stg_profile \
-//   ./main
-
-// If /tmp is not writable, set a user-owned temp directory explicitly:
-// mkdir -p $HOME/tmp/nsys
-// TMPDIR=$HOME/tmp/nsys nsys profile \
-//   --force-overwrite true \
-//   --trace=cuda,nvtx,osrt \
-//   --gpu-metrics-devices=0 \
-//   --gpu-metrics-frequency=10000 \
-//   -o stg_profile \
-//   ./main sample.stg
-
 #include <cuda_runtime.h>
 #include <taskflow/taskflow.hpp>
 
@@ -71,16 +24,6 @@
 #include "task_assignment.hpp"
 #include "resource_allocation.hpp"
 
-#define CUDA_CHECK(expr)                                                      \
-  do {                                                                        \
-    cudaError_t _err = (expr);                                                \
-    if (_err != cudaSuccess) {                                                \
-      std::cerr << "CUDA error: " << cudaGetErrorString(_err)                 \
-                << " at " << __FILE__ << ":" << __LINE__ << std::endl;        \
-      std::exit(EXIT_FAILURE);                                                \
-    }                                                                         \
-  } while (0)
-
 // 1タスクは最大64 SM分のblockを持つ。
 // 単体実行では114 SMを使い切らず、独立タスクの並列実行で
 // 空いているSMを利用できるベンチマークにする。
@@ -94,9 +37,6 @@ StgGraph load_stg_without_comm(const std::string& path) {
   return stg::load_stg_without_comm(path);
 }
 
-static int safe_work_units(int proc_time, int scale, int minimum) {
-  return stg::safe_work_units(proc_time, scale, minimum);
-}
 
 std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
   return stg::make_task_specs_from_stg_common<TaskSpec>(
@@ -156,82 +96,6 @@ void launch_task_kernel_chunked(
         stream
     );
   }
-}
-
-/*
- * 比較用の逐次実行。
- * Green Contextを作らず、primary context上の1 streamへ
- * レベル順に全kernelを投入し、GPU上のkernel時間だけを測る。
- */
-double run_sequential_cuda(
-    const std::vector<TaskSpec>& tasks
-) {
-  TaskDFG dfg = task_DFG_construction(tasks);
-  const TaskLevels levels = task_levelization(dfg);
-  const auto task_by_id = make_task_table(tasks);
-
-  constexpr int N = kTaskElementCount;
-  float* dmem = nullptr;
-  cudaStream_t stream = nullptr;
-  cudaEvent_t start_event = nullptr;
-  cudaEvent_t stop_event = nullptr;
-
-  CUDA_CHECK(
-      cudaMalloc(
-          &dmem,
-          static_cast<std::size_t>(N) * sizeof(float)
-      )
-  );
-
-  CUDA_CHECK(
-      cudaMemset(
-          dmem,
-          0,
-          static_cast<std::size_t>(N) * sizeof(float)
-      )
-  );
-
-  CUDA_CHECK(
-      cudaStreamCreateWithFlags(
-          &stream,
-          cudaStreamNonBlocking
-      )
-  );
-
-  CUDA_CHECK(cudaEventCreate(&start_event));
-  CUDA_CHECK(cudaEventCreate(&stop_event));
-  CUDA_CHECK(cudaEventRecord(start_event, stream));
-
-  for (const auto& level : levels) {
-    for (const int task_id : level) {
-      launch_task_kernel(
-          *task_by_id.at(task_id),
-          dmem,
-          N,
-          stream
-      );
-    }
-  }
-
-  CUDA_CHECK(cudaEventRecord(stop_event, stream));
-  CUDA_CHECK(cudaEventSynchronize(stop_event));
-
-  float sequential_gpu_ms = 0.0f;
-
-  CUDA_CHECK(
-      cudaEventElapsedTime(
-          &sequential_gpu_ms,
-          start_event,
-          stop_event
-      )
-  );
-
-  CUDA_CHECK(cudaEventDestroy(start_event));
-  CUDA_CHECK(cudaEventDestroy(stop_event));
-  CUDA_CHECK(cudaStreamDestroy(stream));
-  CUDA_CHECK(cudaFree(dmem));
-
-  return static_cast<double>(sequential_gpu_ms);
 }
 
 // 実行
@@ -1141,12 +1005,11 @@ void print_stg_summary(const std::vector<TaskSpec>& tasks) {
 }
 
 int main(int argc, char** argv) {
-  if (argc < 2) {
+  if (argc != 2) {
     std::cerr
         << "Usage: "
         << argv[0]
         << " input.stg\n";
-
     return 1;
   }
 
@@ -1159,39 +1022,8 @@ int main(int argc, char** argv) {
 
     print_stg_summary(tasks);
 
-    const double sequential_gpu_kernel_ms =
-        run_sequential_cuda(tasks);
-
     const BenchResult result =
         run_taskflow_cuda(tasks);
-
-    const double measured_speedup =
-        result.gpu_kernel_ms <= 0.0
-            ? 0.0
-            : sequential_gpu_kernel_ms /
-                  result.gpu_kernel_ms;
-
-    const double measured_reduction_percent =
-        sequential_gpu_kernel_ms <= 0.0
-            ? 0.0
-            : (sequential_gpu_kernel_ms -
-               result.gpu_kernel_ms) /
-                  sequential_gpu_kernel_ms * 100.0;
-
-    std::cout << "===== Sequential comparison =====\n";
-    std::cout << "sequential gpu_kernel_ms: "
-              << sequential_gpu_kernel_ms
-              << " ms\n";
-    std::cout << "proposed   gpu_kernel_ms: "
-              << result.gpu_kernel_ms
-              << " ms\n";
-    std::cout << "measured speedup          : "
-              << measured_speedup
-              << " x\n";
-    std::cout << "measured reduction        : "
-              << measured_reduction_percent
-              << " %\n";
-    std::cout << "=================================\n";
 
     std::cout << "mode: proposed\n";
     print_result(result);
@@ -1201,7 +1033,6 @@ int main(int argc, char** argv) {
         << "exception: "
         << error.what()
         << '\n';
-
     return 1;
   }
 

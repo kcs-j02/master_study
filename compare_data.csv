@@ -1,0 +1,8 @@
+method,gpu_kernel_ms,total_allocated_sm,available_sm,sm_utilization_pct,sm_stream0,sm_stream1,sm_stream2,sm_stream3,sm_stream4
+baseline,391.246,,,,0,0,0,0,0
+existing_method,391.253,570,,,114,114,114,114,114
+existing_method_GC,391.553,112,114,98.25,24,24,24,24,16
+proposed,391.376,114,,,82,8,8,8,8
+baseline,391.25,,,,0,0,0,0,0
+existing_method,391.696,570,,,114,114,114,114,114
+existing_method_GC,391.703,112,114,98.25,24,24,24,24,16
