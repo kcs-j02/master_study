@@ -1,0 +1,44 @@
+% ==============================================% 電気・情報関係学会北陸支部連合大会% 講演論文投稿用 pLaTeX2e 版テンプレートファイル(2段組)% Usage: platex jhes2026_platex_utf8_template.tex% ==============================================\documentclass[a4paper,11pt,lualatex,ja=standard]{bxjsarticle}
+
+% 数式\usepackage{amsmath,amsfonts}\usepackage{bm}% 画像\usepackage{graphicx}\usepackage{float} % 図の位置を固定% フローチャート\usepackage{tikz}\usetikzlibrary{positioning,arrows.meta}% 評価グラフ\usepackage{pgfplots}\pgfplotsset{compat=1.18}% url\usepackage{hyperref}% ==============================================% page format%  textwidth  = paperwidth(210mm) -oddsidemargin(13mm) -evensidemargin(13mm)%  textheight = paperheight(297mm) -topmargin(20mm-header分) -bottommargin(18mm)% ==============================================\setlength{\paperwidth}{210mm}\setlength{\textwidth}{\paperwidth}\addtolength{\textwidth}{-13mm} % oddside margin\addtolength{\textwidth}{-13mm} % evenside margin\setlength{\oddsidemargin}{-1in}\addtolength{\oddsidemargin}{13mm} %%%% ここで左右を調節%\setlength{\paperheight}{297mm}\setlength{\textheight}{\paperheight}\addtolength{\textheight}{-28mm} % 文章領域の高さの調整\setlength{\topmargin}{-15mm}    % ここで上下位置を調節%\setlength{\headheight}{0in}\setlength{\headsep}{0in}\setlength{\columnsep}{10mm}\setlength{\textfloatsep}{5pt}    % ページ上端・下端の図と本文の間隔\setlength{\intextsep}{5pt}       % 本文中の図と本文の間隔\setlength{\abovecaptionskip}{2pt}% 図とキャプションの間隔\setlength{\belowcaptionskip}{0pt}% キャプション下の間隔
+
+\makeatletter\renewcommand{\section}{@startsection{section}{1}{\z@}%{\reset@font\large\bfseries}}   %section見出しの文字サイズをlargeに変更\renewcommand{\subsection}{@startsection{subsection}{2}{\z@}%{0pt}% 見出し後の余白なし{0pt}% 見出し後の余白なし{\reset@font\normalsize\bfseries}} %subsectoin見出しの文字サイズをnormalsizeに変更\renewcommand{\subsubsection}{@startsection{subsubsection}{3}{\z@}%{0pt}% 見出し後の余白なし{0pt}% 見出し後の余白なし{\reset@font\normalsize\bfseries}} %subsectoin見出しの文字サイズをnormalsizeに変更\makeatother
+
+\def\nendo{2026}
+
+\def\secraddress{〒923-1292 石川県能美市旭台 1-1\北陸先端科学技術大学院大学 先端科学技術研究科内}\def\secrmail{jhes2026@ml.jaist.ac.jp}
+
+\pagestyle{empty}
+
+\begin{document}\twocolumn[% -- １段組にしたい場合は，ここをコメントアウトする% ==============================================% ページヘッダ(変更禁止)% ==============================================%\begin{center}{\Large [修士論文研究]}\\vspace{-2mm}\rule{\textwidth}{1mm}\end{center}% ==============================================% 原稿はここから% ==============================================%% 講演題目 =====================================\hspace*{12mm}\begin{minipage}{160mm}  %210mm-13mm-13mm-33mm-33mm\begin{center}    %左づめの場合はflushleft{\Large \bf% 依存タスクのための\nobreak\vspace*{4mm}	% 複数行の場合，強制改行して，行間を調整依存タスクの重要度に基づくストリーム割当てとSM配分を用いた
+
+単一GPU向け静的スケジューリング・資源割当て手法
+
+}\end{center}\end{minipage}%
+
+\vspace*{4mm}	% ここで行間を調整%% 著者名（所属） =====================================\hspace*{33.0mm} %講演番号用空欄\begin{minipage}{118mm}  %210mm-13mm-13mm-33mm-33mm\begin{center}    %左づめの場合はflushleft{\large小林智輝(s2510063)\dag,高野恵輔\dag,井口寧\dag, \ddagger
+
+\dag 北陸先端科学技術大学院大学, \ddagger 金沢大学% 小林智輝,高野恵輔,\dag, \dagger井口寧（北陸先端科学技術大学院大学）,井口寧（金沢大学）}\end{center}\end{minipage}
+
+\vspace*{6mm}	% ここで行間を調整] % -- １段組にしたい場合は，ここをコメントアウトする
+
+% 本文 =====================================
+
+\noindent\section*{Abstract:}\section{はじめに}本稿では~を明らかにし、~を評価改善するために、二章では、研究背景三照では、提案手法の解説四章では、提案手法の評価と考察五章でまとめを行う
+
+\section{研究背景}\subsection{研究背景}現代のGPUアーキテクチャは，複数のストリームと多数のSM（Streaming Multiprocessor）を有し，並列実行性能を最大化するために複雑な資源割り当てが必要となる．特に単一GPU上で複数の依存タスクを扱う場合，各タスクの依存関係と重要度に応じたストリーム割当てやSM配分が性能に大きく影響する．依存タスクを持つワークロードでは，単純な先着順実行や均等配分では，GPUの利用率が低下しやすく，クリティカルパス上のタスク実行が遅延することで全体のスループットが悪化する．そのため，タスクの重要度や依存構造を考慮した静的スケジューリングと資源割当てが求められている．\subsection{既存手法}既存研究では，GPU内部の複数ストリームを活用する手法や，SMごとのスレッドブロック割り当てを改良する技術が提案されている．例えば，CUDAストリームによるタスク並列化や，リソース要求に基づく動的スケジューリングは，非依存タスク間の並列度を高めるのに有効である．しかし，これらの手法は依存関係を含むタスクグラフ全体の最適化を十分に扱えておらず，特に単一GPU上での静的割当てにおいては，依存タスクの重要度やSM使用率を同時に考慮した手法が不足している．また，一部の研究ではタスク重要度に基づく優先度付けやクリティカルパス解析を用いたスケジューリングが検討されているが，GPUのストリーム数やSM資源を固定的に見る傾向があり，依存関係の深さやタスクの実行特性に応じた柔軟なSM配分には課題が残る．\subsection{研究の方向性}本研究では，依存タスクの重要度を明示的に評価することで，単一GPU上のストリーム割当てとSM配分を最適化する静的スケジューリング手法を提案する．具体的には，依存タスクグラフの構造から重要度を算出し，クリティカルパスを短く保つためにストリームとSMを適切に割り当てる枠組みを構築する．これにより，従来の単純な均等割当てや動的スケジューリングと比較して，単一GPU上でのタスク実行の重複を抑えつつ，GPU資源の利用効率を高めることを目指す．評価では，代表的な依存タスクワークロードを用いて，提案手法の効果を明らかにする予定である．\section{提案手法}\subsection{提案手法の概要}本研究は，0820で提案した静的割当方式を基盤とし，実行時フィードバックによりSM配分を動的に再調整する手法を提案する．目的は，タスク実行時間の予測誤差や実行時負荷変動に頑健な全体遅延短縮を実現することである．\subsection{提案手法の詳細}提案手法は以下の拡張処理を含む．\subsubsection{依存解析・レベル化}入力STGの依存解析とレベル化を行い，各タスクの最長後続経路長から重要度を算出する．さらに，各タスクに対し事前に予測実行時間（モデル推定または過去実測値）を付与し，静的割当の基礎情報とする．\subsubsection{}重要度の高い順に実行可能タスクを選択し，予測完了時刻と各ストリームの初期SM数を考慮してストリームへ割り当てる．初期SM配分は重要度に比例させつつ，最低稼働を担保するGC下限を確保する．\subsubsection{3. ランタイム監視（短周期）}各ストリームごとに以下を継続計測する：\begin{itemize}\item キューに残る合計予測残時間（残作業量）\item 実測カーネル時間の平均・分散\item 実行済タスクの予測対実測誤差（遅延量）\item ストリームのスループット（タスク完了/sec）\end{itemize}監視周期はオーバーヘッドを抑えつつ反応性を確保するため，概ね50–200 ms程度を想定する．\subsubsection{4. 再配分判定ポリシー}再配分は以下の条件に基づき実行する．\begin{itemize}\item ストリーム$i$の累積遅延が閾値$T_{delay}$を超え，かつ重要度比が高い場合はSM増加候補とする．\item ストリーム$i$の稼働率が低下し，予測誤差が小さい場合はSM減少候補とする．\end{itemize}増減量は最小単位$\Delta SM$で調整し，重要度比と遅延量に応じて\begin{equation*}\Delta = \mathrm{clamp}\left(\mathrm{round}\left(\alpha \cdot \frac{遅延量}{予測残時間} \cdot 重要度比\right),\Delta SM_{min},\Delta SM_{max}\right)\end{equation*}によって決定する．GCのSMは下限$SM_{GC}$を保証し，それ以下にならないよう制約する．\subsubsection{5. 再配分の適用制約}再配分の上限頻度を設定し（例：1秒あたり1回），オーバーヘッドを抑制する．一度の再配分での最大変化量もGPU総SMの10%以内などで制限する．再配分操作には根拠ログを残し，効果が負の場合には即時ロールバックできる仕組みを準備する．
+
+\subsubsection{6. 継続ループと学習}4–5の制御ループをタスク完了まで継続し，実行後に予測誤差・配分履歴・効果を収集する．これらのデータは次回実行の予測モデルや閾値調整に利用し，オンライン学習またはバッチ学習により適応性を高めることを目指す．
+
+\subsection{設計パラメータと評価指標}本手法で想定する主要パラメータは以下の通りである．\begin{itemize}\item monitor_interval = 100 ms\item $T_{delay} = 0.2 \times$ 平均予測残時間\item $\Delta SM_{min} = 4$, $\Delta SM_{max} = 32$\item 再配分頻度上限 = 1 / sec\item $SM_{GC} = GPU,総SM \times 0.1$\item $\alpha = 0.5$（経験的調整係数）\end{itemize}評価では以下の計測項目を用いる．\begin{itemize}\item 全体完了時間（makespan）\item 各タスクの予測誤差分布\item 再配分回数と1回あたりのSM変化量\item オーバーヘッド時間（監視+再配分）\item 安定性（完了時間の分散）\end{itemize}
+
+\subsection{期待される利点と注意点}提案手法は，予測誤差や実行時負荷変動に適応してクリティカルチェーン遅延を低減する可能性を持つ．一方で，監視と再配分のオーバーヘッドが利益を上回らないよう，閾値や頻度の調整が不可欠である．また，実装にはCUDAのSM分割APIやコンテキスト操作への依存が生じる点にも注意が必要である．
+
+\section{評価}\section{まとめ}\section{参考文献}\begin{thebibliography}{99}\bibitem{kesco}Zejia Lin, et al., ``KeSCo: Compiler-based Kernel Scheduling for Multi-task GPU Applications,'' in 2023 IEEE 41st International Conference on Computer Design (ICCD), 2023.
+
+\bibitem{cuda-guide}NVIDIA Corporation, ``CUDA C++ Programming Guide,'' CUDA Toolkit Documentation v13.1, Dec. 2025.\end{thebibliography}
+
+% ==============================================% 原稿はここまで% ==============================================\end{document}
+
+
+
