@@ -4,7 +4,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
-import tempfile
+import os
 from pathlib import Path
 from statistics import mean
 
@@ -26,6 +26,10 @@ NSYS = shutil.which("nsys")
 # Nsight Systems の一時ファイル置き場
 NSYS_TMP_ROOT = Path.home() / "tmp" / "nsys"
 NSYS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Nsight Systems レポート保存先
+NSYS_RESULT_DIR = ROOT / "nsys_reports"
+NSYS_RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
 # GPU Metrics
 GPU_METRICS_DEVICE = "0"
@@ -797,12 +801,15 @@ def query_sm_active_samples(sqlite_path):
     Nsight Systems SQLite exportから
     SMs Active の時系列サンプルを取得する。
 
+    各 main は対象手法だけを実行する前提。
+
     評価区間:
-      最初に SMs Active > 0 となったサンプルから
+      対象手法で最初に SMs Active > 0 となったサンプルから
       最後に SMs Active > 0 となったサンプルまで。
 
-    この区間内の 0% サンプルは除外せず平均する。
-    したがって、処理途中のGPUアイドル時間も評価に含む。
+    前後の待機中の 0% は除外する。
+    一方、手法の実行区間内に現れる 0% は除外せず平均する。
+    したがって、逐次実行など別手法のSM使用率は混ざらない。
     """
 
     connection = sqlite3.connect(str(sqlite_path))
@@ -866,7 +873,13 @@ def measure_sm_active_for_stg(
 ):
     """
     1手法 × 1STGをNsight Systemsで1回実行し、
-    SMs Active [%]の平均を返す。
+    その手法だけのSMs Active [%]平均を返す。
+
+    前提:
+      STG/main                  -> Sequentialのみ
+      STG_existing_method/main  -> Existingのみ
+      STG_existing_method_GC/main -> Existing + GCのみ
+      STG_my_method/main        -> Proposedのみ
     """
 
     method = method_cfg["method"]
@@ -880,125 +893,119 @@ def measure_sm_active_for_stg(
     print(f"Method : {method}")
     print("-" * 80)
 
-    env = dict(**__import__("os").environ)
+    env = dict(os.environ)
     env["TMPDIR"] = str(NSYS_TMP_ROOT)
 
-    with tempfile.TemporaryDirectory(
-        prefix="sm_active_",
-        dir=str(NSYS_TMP_ROOT),
-    ) as tmp_dir_str:
+    report_prefix = (
+        NSYS_RESULT_DIR
+        / f"{input_file.stem}_{method}"
+    )
+    report_path = Path(str(report_prefix) + ".nsys-rep")
+    sqlite_path = Path(str(report_prefix) + ".sqlite")
 
-        tmp_dir = Path(tmp_dir_str)
+    if report_path.exists():
+        report_path.unlink()
 
-        report_prefix = tmp_dir / "profile"
-        report_path = tmp_dir / "profile.nsys-rep"
-        sqlite_path = tmp_dir / "profile.sqlite"
+    if sqlite_path.exists():
+        sqlite_path.unlink()
 
-        # ----------------------------------------------------
-        # Nsight Systemsで再実行
-        #
-        # CPU sampling/context switchは不要なので無効化
-        # 実行時間評価にはこの測定値を使用しない
-        # ----------------------------------------------------
+    profile_cmd = [
+        NSYS,
+        "profile",
+        "--force-overwrite=true",
+        "--sample=none",
+        "--cpuctxsw=none",
+        "--trace=cuda",
+        f"--gpu-metrics-devices={GPU_METRICS_DEVICE}",
+        f"--gpu-metrics-frequency={GPU_METRICS_FREQUENCY}",
+        f"--output={report_prefix}",
+        binary_path,
+        input_file,
+    ]
 
-        profile_cmd = [
-            NSYS,
-            "profile",
-            "--force-overwrite=true",
-            "--sample=none",
-            "--cpuctxsw=none",
-            "--trace=cuda",
-            f"--gpu-metrics-devices={GPU_METRICS_DEVICE}",
-            f"--gpu-metrics-frequency={GPU_METRICS_FREQUENCY}",
-            f"--output={report_prefix}",
-            binary_path,
-            input_file,
-        ]
+    run_command(
+        profile_cmd,
+        method_dir,
+        env=env,
+    )
 
-        run_command(
-            profile_cmd,
-            method_dir,
-            env=env,
+    if not report_path.exists():
+        raise RuntimeError(
+            f"Nsight report not found: {report_path}"
         )
 
-        if not report_path.exists():
-            raise RuntimeError(
-                f"Nsight report not found: {report_path}"
-            )
+    export_cmd = [
+        NSYS,
+        "export",
+        "--type=sqlite",
+        "--force-overwrite=true",
+        f"--output={sqlite_path}",
+        report_path,
+    ]
 
-        # ----------------------------------------------------
-        # .nsys-rep -> SQLite
-        # ----------------------------------------------------
+    run_command(
+        export_cmd,
+        method_dir,
+        env=env,
+    )
 
-        export_cmd = [
-            NSYS,
-            "export",
-            "--type=sqlite",
-            "--force-overwrite=true",
-            f"--output={sqlite_path}",
-            report_path,
-        ]
-
-        run_command(
-            export_cmd,
-            method_dir,
-            env=env,
+    if not sqlite_path.exists():
+        raise RuntimeError(
+            f"Nsight SQLite export not found: {sqlite_path}"
         )
 
-        if not sqlite_path.exists():
-            raise RuntimeError(
-                f"Nsight SQLite export not found: "
-                f"{sqlite_path}"
-            )
+    timestamps, values = query_sm_active_samples(
+        sqlite_path
+    )
 
-        # ----------------------------------------------------
-        # SMs Active取得
-        # ----------------------------------------------------
+    avg_sm_active = mean(values)
+    min_sm_active = min(values)
+    max_sm_active = max(values)
 
-        timestamps, values = query_sm_active_samples(
-            sqlite_path
-        )
+    duration_ms = (
+        timestamps[-1] - timestamps[0]
+    ) / 1_000_000.0
 
-        avg_sm_active = mean(values)
-        min_sm_active = min(values)
-        max_sm_active = max(values)
+    print()
+    print(
+        f"[SM ACTIVE RESULT] "
+        f"{input_file.stem} / {method}"
+    )
+    print(
+        f"  samples         = {len(values)}"
+    )
+    print(
+        f"  measured window = {duration_ms:.3f} ms"
+    )
+    print(
+        f"  SMs Active avg  = {avg_sm_active:.2f}%"
+    )
+    print(
+        f"  SMs Active min  = {min_sm_active:.2f}%"
+    )
+    print(
+        f"  SMs Active max  = {max_sm_active:.2f}%"
+    )
+    print(
+        f"  report          = {report_path}"
+    )
+    print(
+        f"  sqlite          = {sqlite_path}"
+    )
 
-        duration_ms = (
-            timestamps[-1] - timestamps[0]
-        ) / 1_000_000.0
-
-        print()
-        print(
-            f"[SM ACTIVE RESULT] "
-            f"{input_file.stem} / {method}"
-        )
-        print(
-            f"  samples         = {len(values)}"
-        )
-        print(
-            f"  measured window = {duration_ms:.3f} ms"
-        )
-        print(
-            f"  SMs Active avg  = {avg_sm_active:.2f}%"
-        )
-        print(
-            f"  SMs Active min  = {min_sm_active:.2f}%"
-        )
-        print(
-            f"  SMs Active max  = {max_sm_active:.2f}%"
-        )
-
-        return {
-            "stg": input_file.stem,
-            "stg_file": input_file.name,
-            "method": method,
-            "display": method_cfg["display"],
-            "sm_active_pct": avg_sm_active,
-            "sm_active_min_pct": min_sm_active,
-            "sm_active_max_pct": max_sm_active,
-            "sm_active_samples": len(values),
-            "sm_active_window_ms": duration_ms,
-        }
+    return {
+        "stg": input_file.stem,
+        "stg_file": input_file.name,
+        "method": method,
+        "display": method_cfg["display"],
+        "sm_active_pct": avg_sm_active,
+        "sm_active_min_pct": min_sm_active,
+        "sm_active_max_pct": max_sm_active,
+        "sm_active_samples": len(values),
+        "sm_active_window_ms": duration_ms,
+        "nsys_report": str(report_path),
+        "sqlite": str(sqlite_path),
+    }
 
 
 # ============================================================
@@ -1015,7 +1022,7 @@ def measure_all_sm_active():
         "# Execution time / Speedup measurement is already finished."
     )
     print(
-        "# Every STG × Method is now executed again under Nsight Systems."
+        "# Each method-only binary is executed once under Nsight Systems."
     )
     print("#" * 95)
 
@@ -1306,12 +1313,22 @@ def main():
     )
     print(
         "  Profiling      : "
-        "1 separate Nsight Systems run "
+        "1 separate method-only Nsight Systems run "
         "per STG × Method"
+    )
+    print(
+        "  Range          : "
+        "first active sample -> last active sample"
+    )
+    print(
+        "  Internal 0%    : included"
     )
     print(
         f"  Sampling       : "
         f"{GPU_METRICS_FREQUENCY} Hz"
+    )
+    print(
+        f"  Reports        : {NSYS_RESULT_DIR}"
     )
 
     print()
