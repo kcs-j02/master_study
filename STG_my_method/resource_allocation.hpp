@@ -11,6 +11,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "common_types.hpp"
@@ -815,6 +816,11 @@ inline void release_gc_stream(
     return;
   }
 
+  const int released_sm_count =
+      rr.sm_count_each_stream.at(
+          static_cast<std::size_t>(stream_id)
+      );
+
   if (rr.streams.at(
           static_cast<std::size_t>(stream_id)
       ) != nullptr) {
@@ -851,6 +857,17 @@ inline void release_gc_stream(
       static_cast<std::size_t>(stream_id)
   ) = nullptr;
 
+  const bool has_normal_stream =
+      rr.normal_stream_id >= 0 &&
+      rr.normal_stream_id <
+          static_cast<int>(rr.sm_count_each_stream.size());
+
+  if (has_normal_stream) {
+    rr.sm_count_each_stream.at(
+        static_cast<std::size_t>(rr.normal_stream_id)
+    ) += released_sm_count;
+  }
+
   rr.sm_count_each_stream.at(
       static_cast<std::size_t>(stream_id)
   ) = 0;
@@ -858,22 +875,65 @@ inline void release_gc_stream(
   std::cout
       << "[GC released] stream["
       << stream_id
-      << "]\n";
+      << "], returned SM="
+      << released_sm_count;
+
+  if (has_normal_stream) {
+    std::cout
+        << ", normal stream SM="
+        << rr.sm_count_each_stream.at(
+               static_cast<std::size_t>(
+                   rr.normal_stream_id
+               )
+           );
+  }
+
+  std::cout << '\n';
 }
 
-inline void release_finished_gc_streams(
+/*
+ * GPU workの投入が全て完了した後に呼び出し、処理済みのGC streamだけを
+ * ブロックせずに検出して回収する。
+ *
+ * cudaStreamQueryがcudaSuccessを返したstreamには未完了処理がなく、
+ * 以後そのstreamへ新しい処理を投入しないことを呼び出し側の前提とする。
+ */
+inline bool release_finished_gc_streams(
     RuntimeResources& rr
 ) {
+  bool released_any = false;
+
   for (const int stream_id : rr.gc_stream_ids) {
+    const cudaStream_t stream =
+        rr.streams.at(
+            static_cast<std::size_t>(stream_id)
+        );
+
+    if (stream == nullptr) {
+      continue;
+    }
+
+    const cudaError_t query_result =
+        cudaStreamQuery(stream);
+
+    if (query_result == cudaErrorNotReady) {
+      continue;
+    }
+
+    RA_CUDA_CHECK(query_result);
+
     release_gc_stream(rr, stream_id);
+    released_any = true;
   }
+
+  return released_any;
 }
 
-inline void release_finished_gc_streams(
+inline bool release_finished_gc_streams(
     RuntimeResources& rr,
     int /* stream_count */
 ) {
-  release_finished_gc_streams(rr);
+  return release_finished_gc_streams(rr);
 }
 
 inline bool all_gc_streams_released(
@@ -907,6 +967,33 @@ inline bool all_gc_streams_released(
     int /* stream_count */
 ) {
   return all_gc_streams_released(rr);
+}
+
+/*
+ * 全GC streamの完了を監視し、完了したstreamから順に資源を解放する。
+ * 単一threadから全streamをpollすることで、遅いGC streamが先に並んでいても
+ * 先に完了した別streamの解放を妨げない。
+ */
+inline void wait_and_release_gc_streams(
+    RuntimeResources& rr
+) {
+  while (!all_gc_streams_released(rr)) {
+    const bool released_any =
+        release_finished_gc_streams(rr);
+
+    if (!released_any) {
+      std::this_thread::sleep_for(
+          std::chrono::microseconds(50)
+      );
+    }
+  }
+}
+
+inline void wait_and_release_gc_streams(
+    RuntimeResources& rr,
+    int /* stream_count */
+) {
+  wait_and_release_gc_streams(rr);
 }
 
 inline void destroy_runtime_resources(
