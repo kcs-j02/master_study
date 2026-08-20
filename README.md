@@ -16,20 +16,45 @@
 
 を組み合わせることで，全体実行時間の短縮を目指す．
 
+## 既存手法
+
+比較対象とする既存手法（Existing）は，依存関係を満たしながらタスクを複数のCUDA Streamへ静的に割り当て，実行の重なりによって全体完了時間を短縮する手法である．
+
+### 処理の流れ
+
+1. STGファイルを読み込み，タスクの依存グラフ（DFG）を構築
+2. 入次数が0のタスクを順に取り除き，タスクをレベル化
+3. 最大レベル幅と上限5本から使用するStream数を決定
+4. 各タスク自身を含む，出口タスクまでの経路上の処理時間和の最大値（bottom level）を計算
+5. 全先行タスクが割当て済みのタスクをready集合へ追加
+6. ready集合からbottom levelが大きいタスクを優先して選択
+7. 全先行タスクの予測完了時刻の最大値以降にある各Streamの最初の空き区間を調べ，原則として予測完了時刻が最小となるStreamへ割当て．ただし，現在の部分makespanを悪化させない場合はstream 0を優先
+8. TaskflowとCUDA Eventを用いてDFGの依存制約と同一Stream内の予測開始時刻順の実行を保証
+9. Green Contextを使用せず，複数の通常CUDA Streamでタスクを実行
+
+### 特長と制約
+
+- 依存制約を保ったまま，独立に実行可能なタスクの並行性を利用できる．
+- bottom levelにより，出口タスクまでの残り処理時間が長いタスクを優先できる．
+- Stream末尾だけでなく，依存待ちで生じる空き区間にもタスクを配置する．
+- 割当て時には全Streamを同一性能として扱い，使用するStream数は`min(最大レベル幅, 5)`で決定する．
+- 全StreamがGPUのSMを共有し，Streamごとの専有SMは設けない．そのため，Green Contextの作成コストは生じない一方，同時実行タスク間のSM競合を制御できない．
+- 通信時間，データ転送時間，および実行中の動的な再スケジューリングは考慮しない．
+
+`STG_existing_method_GC`では，上記と同じタスク割当てを決定した後，全StreamをGreen Context上に作成し，使用可能なSMを分割粒度の範囲で可能な限り均等に配分する．SM配分後のタスク再割当てや，タスク重要度に応じたSM再配分は行わない．
+
 ## 提案手法
 
 提案手法では，以下の流れでスケジューリングを行う．
 
-1. タスクグラフの依存関係を解析
-2. タスクをレベル化
-3. 各タスクから出口タスクまでの最長後続経路長を計算
-4. 最長後続経路長（bottom level）をタスク重要度として設定
-5. 重要度の高いタスクからStreamへ割当て
-6. SM数と予測完了時刻から割当て先を決定
-7. 重要タスクを実行するStreamへSMを重点配分
-8. CUDA Green ContextによりGPU資源を分離
-9. 複数のStream数について予測makespanを比較
-10. makespanが最小となる構成を採用
+1. タスクグラフの依存関係を解析し，タスクをレベル化
+2. 最大レベル幅と上限5本から使用するStream数を決定
+3. Stream数に対応する非対称な初期SM配分を選択
+4. 各タスクから出口タスクまでのbottom levelを計算
+5. 全先行タスクが割当て済みのタスクから，bottom levelが大きいタスクを優先して選択
+6. 各StreamのSM数を用いてタスクの実行時間を予測し，原則として予測完了時刻が最小となるStreamへ割当て
+7. 重要タスクが最大SM数の優先Stream（既定表ではStream 0）へ集まりやすくし，背景タスクを他のStreamへ分散
+8. Stream 0をprimary context上の通常Stream，Stream 1以降をGreen Context上のStreamとして実行
 
 ## 使用技術
 
@@ -87,7 +112,7 @@ Baseline実装．
 ### `STG_existing_method_GC/`
 
 既存方式にCUDA Green ContextによるSM分割を追加した方式．  
-各StreamへのSM分割は均等に行う．
+各StreamへのSM分割は，分割粒度の範囲で可能な限り均等に行う．
 
 ### `STG_my_method/`
 
@@ -97,8 +122,8 @@ Baseline実装．
 - `common_types.hpp`：共通型定義
 - `task_DFG_construction.hpp`：依存グラフ構築
 - `task_levelization.hpp`：レベル化
-- `task_assignment.hpp`：重要度ベースのStream割当て
-- `resource_allocation.hpp`：重要度と処理量に基づくSM配分
+- `task_assignment.hpp`：bottom levelとSM数を考慮したStream割当て，Stream数別の初期SM配分
+- `resource_allocation.hpp`：Green Contextの構築とSM資源の管理
 
 ### その他
 
@@ -113,13 +138,13 @@ Baseline実装．
    すべてのタスクを逐次実行する．
 
 2. **Existing**  
-   既存手法により複数Streamへタスクを割り当てる．
+   bottom levelと予測完了時刻に基づいてタスクを複数の通常Streamへ割り当て，GPU資源を共有して実行する．
 
 3. **Existing + GC**  
-   ExistingのStream割当てにCUDA Green Contextを適用し，各StreamへSMを均等配分する．
+   Existingと同じStream割当てを用い，割当て後にCUDA Green ContextでSMをほぼ均等に分割する．
 
 4. **Proposed**  
-   bottom levelに基づいてタスク重要度を求め，重要度を考慮したStream割当てとSM配分を行う．
+   bottom levelに基づくStream割当てと，重要タスク用のStream 0へ多くのSMを残す非対称な固定SM配分を用いる．
 
 ## 評価用STG
 
@@ -323,7 +348,7 @@ total_allocated_sm / available_sm
 
 は実際のSM稼働率ではない．
 
-これはGreen Contextなどによって各Streamへ割り当てたSM数の割合を表す**SM割当率**である．
+これはGreen Contextによって各Streamへ専有割当てしたSM数の割合を表す**SM割当率**である．通常CUDA StreamでGPU資源を共有するExistingには，この意味でのStream別SM割当てはない．
 
 そのため，GPU使用状況の評価にはNsight Systemsから取得した`SMs Active [%]`を使用する．
 
@@ -336,7 +361,7 @@ total_allocated_sm / available_sm
 * `sm_stream3`
 * `sm_stream4`
 
-は，各方式がどのようにSMを配分したかを確認するための補助情報として利用できる．
+は，Green Contextを使用する方式がどのようにSMを配分したかを確認するための補助情報として利用できる．Existingで出力されるStream別SM値はスケジューリング用の参照値であり，物理的な専有割当てを表さない．
 
 ## 評価の考え方
 
@@ -358,41 +383,140 @@ Critical Path上の重要タスクへSMを重点的に配分することで，�
 
 ### Existing + GC
 
-各StreamへSMを**均等配分**する．
+利用可能なSMを分割粒度の倍数へ切り下げ，各Streamへ配分単位数が可能な限り等しくなるように配分する．余った配分単位は，Stream IDが小さい順に1単位ずつ加える．
 
 例：
 
 ```text
-利用可能SM = 112
+利用可能SM = 114
+分割粒度 = 8 SM
 Stream数 = 4
 
-Stream 0 : 28 SM
-Stream 1 : 28 SM
-Stream 2 : 28 SM
-Stream 3 : 28 SM
+Stream 0 : 32 SM
+Stream 1 : 32 SM
+Stream 2 : 24 SM
+Stream 3 : 24 SM
+未使用  :  2 SM
 ```
 
 ### Proposed
 
-各Streamに含まれるタスクの重要度と処理量を考慮してSMを配分する．
+#### 現行実装のSM数決定
 
-重要度にはbottom levelを使用する．
-
-ストリーム`s`の処理量を，
+現行実装では，使用するStream数に応じて，H100（114 SM）向けの非対称なSM配分を固定表からあらかじめ選択する．以下は環境変数による上書きを行わない場合の既定値である．
 
 ```text
-Ws = Stream sに含まれるタスクの実行時間の総和
+Stream数  SM配分 [Stream 0, Stream 1, ...]
+1           [114]
+2           [82, 32]
+3           [82, 16, 16]
+4           [82, 16, 8, 8]
+5           [82, 8, 8, 8, 8]
 ```
 
-ストリームの重要度を，
+評価用に次の上書きも用意している．これらは実験条件を変えるための機能であり，$W_s$ や $B_s$ からの自動配分ではない．
+
+- `STG_DISABLE_GC`：Green Contextを使わず，全Streamを通常CUDA StreamとしてGPU資源を共有
+- `STG_TWO_STREAM_GC_SM=<N>`：2 Stream構成を`[114-N, N]`へ上書き
+- `STG_STREAM_SM_COUNTS=<N0,N1,...>`：StreamごとのSM数を直接指定
+
+Stream 0はprimary context上の通常Streamとし，複数Stream構成の既定値では82 SMを残す．Stream 1以降はGreen Context上に作成し，残り32 SMを8 SM単位で可能な限り均等に分配する．ただし，固定表を実行時に自動生成するのではなく，Green Contextの実際の分割粒度と最小SM数はGPUから取得して検証する．実機の粒度が固定表と整合しない場合は実行エラーとなる．
+
+2本以上のStreamを使用する場合について，Stream数を $S$，GC Stream数を $K=S-1$，GC側の総SM数を $M_{GC}=32$，分割粒度を $g=8$ とする．配分可能な単位数 $U$，各GC Streamの基本単位数 $q$，余り $a$ は次式となる．
 
 ```text
-Bs = Stream sに含まれる最大bottom level
+U = M_GC / g = 4
+q = floor(U / K)
+a = U mod K
 ```
 
-として，これらを組み合わせてSM配分を決定する．
+先頭の $a$ 本のGC Streamへ $g(q+1)$ SM，残りのGC Streamへ $gq$ SMを割り当てると，上記の固定表と同じ数値になる．Stream 0の82 SMはコード上でも固定値であるが，数値上は114 SMからGC側の32 SMを引いた残余に対応する．
 
-そのため，Existing + GCとは異なり，各StreamへのSM数は均等ではない．
+このSM数はタスク割当て前に決定し，タスク $i$ をStream $s$ で実行する場合の予測処理時間 $\hat{p}_{i,s}$ に反映する．
+
+```text
+p_hat(i,s) = p_i * min(M_ref, L_i) / min(M_s, L_i)
+```
+
+- $p_i$：STGに記載されたタスク $i$ の処理時間
+- $M_{ref}$：基準SM数（114）
+- $M_s$：Stream $s$ に配分したSM数
+- $L_i$：タスク $i$ が並列に利用できるSM数の上限（本実装では64）
+
+`STG_KERNEL_AWARE_COST`を指定した評価では，$p_i$ の代わりに実際のカーネル反復回数に基づく次の重みを使用する．
+
+```text
+p_i = work_units_i * 3  (HEAVY)
+p_i = work_units_i      (LIGHT)
+```
+
+例えば，82 SMと114 SMのStreamはどちらも実効SM数が64であるため，予測処理時間は $p_i$ となる．一方，16 SMのStreamでは $4p_i$，8 SMのStreamでは $8p_i$ と見積もる．
+
+ready集合からはbottom levelが大きいタスクを先に選び，部分makespanを悪化させない場合は最大SM数の優先Streamを選ぶ．既定表ではStream 0が優先Streamとなるため，重要タスクはStream 0へ集まりやすくなり，その他のタスクは小さなGreen Context側も利用する．
+
+#### Streamの重要度と処理量からSM数を決定する（拡張設計）
+
+Streamごとの性質からSM数を直接決める場合は，まずタスクの仮割当てを行う．Stream $s$ へ割り当てられたタスク集合を $T_s$ とし，処理量 $W_s$ と重要度 $B_s$ を次式で求める．
+
+```text
+W_s = sum(p_i),             i in T_s
+B_s = max(bottom_level_i),  i in T_s
+```
+
+$W_s$ はそのStreamが担う総処理量を表し，値が大きいStreamへSMを増やすことで負荷の偏りを緩和できる．$B_s$ はそのStreamに含まれる最重要タスクの緊急度を表し，値が大きいStreamを遅らせないことでクリティカルパスの伸長を抑えられる．
+
+$W_s$ と $B_s$ はスケールが異なるため，それぞれの総和で正規化し，Streamの配分スコア $P_s$ を定義する．
+
+```text
+W_norm(s) = W_s / sum(W_r)
+B_norm(s) = B_s / sum(B_r)
+P_s = lambda * B_norm(s) + (1 - lambda) * W_norm(s)
+```
+
+$\lambda$ は重要度と処理量のどちらを重視するかを決める係数であり，$0\leq\lambda\leq1$ とする．$\lambda=1$ なら重要度のみ，$\lambda=0$ なら処理量のみを考慮する．両者を同程度に扱う初期値として $\lambda=0.5$ を用いることができるが，最終的な値は予備実験や感度分析によって決定する必要がある．タスクを持たないStreamは $W_s=B_s=P_s=0$ とし，SM配分対象から除外する．また，正規化の分母が0となる指標は，有効なStream間で均等な値 $1/S_a$ にフォールバックする．
+
+SM配分時は，GPUの使用可能SM数を $M$，Green Contextの分割粒度を $g$，Streamごとの最小SM数を $m_{min}$ とし，次の手順を用いる．$g$ と $m_{min}$ は固定値にせず，GPUから取得した情報を用いて次式で求める．
+
+```text
+g = max(2, smCoscheduledAlignment)
+m_min = ceil(max(2, minSmPartitionSize) / g) * g
+```
+
+1. タスクを持つ全Streamへ $m_{min}$ SMずつ割り当てる．
+2. 残りのSMを $g$ SMずつの配分単位に分ける．
+3. $P_s/M_s$ が最大のStreamを選び，そのStreamへ $g$ SMを追加する．ここで $M_s$ は現在のStream $s$ のSM数である．
+4. 配分単位がなくなるまで3を繰り返す．
+5. $g$ SM未満の端数は，Green Contextではない通常Stream 0に残す．
+
+有効なStream数を $S_a$ としたとき，$M<S_a m_{min}$ であれば最小SM数を満たせないため，Stream数を減らすか，その構成を無効とする．$P_s/M_s$ が同値の場合は，$P_s$ が大きいStream，さらに同値ならStream IDが小さいStreamを選ぶことで結果を一意にする．
+
+$P_s/M_s$ を用いることで，配分スコアが高いのにSM数が少ないStreamから優先的にSMを増やせる．すべてのSMを一度に比例配分する場合と異なり，最小SM数と分割粒度を常に満たせる．
+
+また，Stream $s$ の配分上限を $C_s=g\lceil(\max_{i\in T_s}L_i)/g\rceil$ とし，$M_s\geq C_s$ のStreamは追加配分の候補から外す．これにより，分割粒度に必要な端数を除き，予測処理時間を短縮できないSM配分を避ける．全Streamが上限に達した後の残余は通常Stream 0に残すか，未使用とする．
+
+例として，3本のStreamの値が次の場合を考える．
+
+```text
+             Stream 0  Stream 1  Stream 2
+W_s              60        30        10
+B_s             100        40        20
+W_norm(s)       0.60      0.30      0.10
+B_norm(s)      0.625      0.25     0.125
+P_s (lambda=0.5)
+               0.6125     0.275    0.1125
+```
+
+$M=114$，$g=8$，$m_{min}=8$ とする．まず3本のStreamへ8 SMずつ，合計24 SMを割り当てる．残り90 SMのうち88 SMを11個の配分単位として順に配分すると`[64, 32, 16]`となり，端数2 SMを通常Stream 0に残すため，最終的な配分は次のようになる．
+
+```text
+Stream 0 : 66 SM
+Stream 1 : 32 SM
+Stream 2 : 16 SM
+```
+
+Stream 0の66 SMには，8 SM単位で配分した64 SMと，分割粒度未満の端数2 SMが含まれる．SM配分後は，決定した $M_s$ でタスク割当てと予測makespanを再計算する．更新前より予測makespanが短くなる場合のみ新しい構成を採用する．反復する場合は上限回数を設け，予測makespanが改善しない場合または同じ構成が再現した場合に終了する．
+
+> **実装状況：** 現行の`STG_my_method` は上記の $W_s$，$B_s$，$P_s$ によるSM配分と再割当てをまだ実装していない．現在はStream数別の固定表を使用しており，$W_s$ はログ出力にのみ使用し，Stream別の $B_s$ は集計していない．そのため，この拡張設計を提案手法の実装済み機能として評価するには，コードへの組み込みが必要である．
 
 ## Green Context使用時の注意
 

@@ -535,6 +535,49 @@ def plot_speedup(stg_name, results, stg_label=None):
 
 
 # ============================================================
+# 1STG SM Activeグラフ
+# ============================================================
+
+def plot_sm_active(stg_name, results, stg_label=None):
+    labels = [result["display"] for result in results]
+    sm_active_values = [result["sm_active_pct"] for result in results]
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(labels, sm_active_values)
+
+    plt.xlabel("Method")
+    plt.ylabel("Average SMs Active [%]")
+
+    if stg_label is None:
+        stg_label = stg_name
+
+    plt.title(f"SMs Active - {stg_label}")
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+
+    for bar, value in zip(bars, sm_active_values):
+        plt.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            f"{value:.2f}%",
+            ha="center",
+            va="bottom",
+        )
+
+    plt.tight_layout()
+
+    output_path = ROOT / f"{stg_name}_sm_active.png"
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+    print(f"Graph: {output_path}")
+
+
+# ============================================================
 # 1STG 結果表示
 # ============================================================
 
@@ -1277,6 +1320,18 @@ def main():
         all_sm_results
     )
 
+    mixed_stg_key = "sample_mixed_chain_parallel"
+    mixed_stg_label = STG_DISPLAY_NAMES.get(
+        mixed_stg_key,
+        mixed_stg_key,
+    )
+
+    plot_sm_active(
+        mixed_stg_key,
+        all_sm_results[mixed_stg_key],
+        stg_label=mixed_stg_label,
+    )
+
     # ========================================================
     # 終了
     # ========================================================
@@ -1341,6 +1396,9 @@ def main():
     )
     print(
         "  all_stg_sm_active_comparison.png"
+    )
+    print(
+        "  sample_mixed_chain_parallel_sm_active.png"
     )
     print()
 
