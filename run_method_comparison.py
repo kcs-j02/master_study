@@ -10,6 +10,18 @@ from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+
+
+# グラフ文字サイズ（大きめだが重なりにくい設定）
+plt.rcParams.update({
+    "font.size": 18,
+    "axes.titlesize": 22,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
+    "legend.fontsize": 15,
+})
 
 
 # ============================================================
@@ -31,6 +43,16 @@ NSYS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
 NSYS_RESULT_DIR = ROOT / "nsys_reports"
 NSYS_RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 比較図はルート直下へ散らさず、このディレクトリへ集約する。
+FIGURE_OUTPUT_DIR = ROOT / "comparison_figures"
+FIGURE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 個別PNGに加え、全図を1つの複数ページPDFにもまとめる。
+COMBINED_FIGURE_PATH = (
+    FIGURE_OUTPUT_DIR / "all_method_comparison_figures.pdf"
+)
+_ACTIVE_COMBINED_PDF = None
+
 # GPU Metrics
 GPU_METRICS_DEVICE = "0"
 GPU_METRICS_FREQUENCY = 10000  # 10 kHz
@@ -41,7 +63,6 @@ GPU_METRICS_FREQUENCY = 10000  # 10 kHz
 # ============================================================
 
 INPUT_FILES = [
-    ROOT / "sample_mixed_chain_parallel.stg",
     ROOT / "sample_fully_parallel.stg",
     ROOT / "sample_Multiple_long_branches.stg",
     ROOT / "sample_random.stg",
@@ -50,7 +71,6 @@ INPUT_FILES = [
 
 
 STG_DISPLAY_NAMES = {
-    "sample_mixed_chain_parallel": "Mixed: Chain+Parallel ",
     "sample_fully_parallel": "Fully Parallel",
     "sample_Multiple_long_branches": "Multiple Long Branches",
     "sample_random": "Random",
@@ -70,32 +90,96 @@ WARMUP_RUNS = 2
 # 評価対象手法
 # ============================================================
 
+METHOD_COLORS = {
+    "baseline": "#1f77b4",
+    "existing_method": "#ff7f0e",
+    "existing_method_gc": "#2ca02c",
+    "proposed": "#d62728",
+}
+
+PROPOSED_STAGE_METRICS = [
+    (
+        "stage_1_stg_analysis_seconds",
+        "Stage 1 - STG analysis",
+    ),
+    (
+        "stage_2_task_importance_seconds",
+        "Stage 2 - Task importance",
+    ),
+    (
+        "stage_3_stream_placement_seconds",
+        "Stage 3 - Stream placement",
+    ),
+    (
+        "stage_4_sm_allocation_comparison_seconds",
+        "Stage 4 - SM allocation comparison",
+    ),
+    (
+        "stage_5_green_context_execution_seconds",
+        "Stage 5 - Green Context execution",
+    ),
+]
+
 METHODS = [
     {
         "method": "baseline",
         "display": "Baseline",
         "dir": "STG",
         "binary": "main",
+        "color": METHOD_COLORS["baseline"],
     },
     {
         "method": "existing_method",
         "display": "Existing",
         "dir": "STG_existing_method",
         "binary": "main",
+        "color": METHOD_COLORS["existing_method"],
     },
     {
         "method": "existing_method_gc",
         "display": "Existing + GC",
         "dir": "STG_existing_method_GC",
         "binary": "main",
+        "color": METHOD_COLORS["existing_method_gc"],
     },
     {
         "method": "proposed",
         "display": "Proposed",
         "dir": "STG_my_method",
         "binary": "main",
+        "color": METHOD_COLORS["proposed"],
     },
 ]
+
+
+def get_result_colors(results):
+    return [
+        METHOD_COLORS[result["method"]]
+        for result in results
+    ]
+
+
+def save_comparison_figure(filename):
+    """現在の図を個別PNGと実行単位の集約PDFへ保存する。"""
+    figure = plt.gcf()
+    output_path = FIGURE_OUTPUT_DIR / filename
+
+    figure.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    if _ACTIVE_COMBINED_PDF is not None:
+        _ACTIVE_COMBINED_PDF.savefig(
+            figure,
+            bbox_inches="tight",
+        )
+
+    plt.close(figure)
+    print(f"Graph: {output_path}")
+
+    return output_path
 
 
 # ============================================================
@@ -266,6 +350,27 @@ def parse_num_tasks(output):
     return int(match.group(1))
 
 
+def parse_proposed_stage_seconds(output):
+    stage_seconds = {}
+
+    for metric_key, _ in PROPOSED_STAGE_METRICS:
+        match = re.search(
+            rf"^{re.escape(metric_key)}\s*:\s*"
+            rf"([0-9.eE+-]+)\s+s\s*$",
+            output,
+            re.MULTILINE,
+        )
+
+        if not match:
+            raise RuntimeError(
+                f"{metric_key} could not be parsed"
+            )
+
+        stage_seconds[metric_key] = float(match.group(1))
+
+    return stage_seconds
+
+
 # ============================================================
 # PHASE 1:
 # 1手法 × 1STG の実行時間測定
@@ -285,6 +390,10 @@ def run_method_for_stg(method_cfg, input_file):
 
     submit_wait_samples = []
     kernel_samples = []
+    stage_samples = {
+        metric_key: []
+        for metric_key, _ in PROPOSED_STAGE_METRICS
+    }
     detected_num_tasks = None
 
     for i in range(RUNS):
@@ -299,6 +408,16 @@ def run_method_for_stg(method_cfg, input_file):
         submit_wait_ms = parse_gpu_submit_wait_ms(output)
         kernel_ms = parse_gpu_kernel_ms(output)
         num_tasks = parse_num_tasks(output)
+
+        if method == "proposed":
+            current_stage_seconds = (
+                parse_proposed_stage_seconds(output)
+            )
+
+            for metric_key, _ in PROPOSED_STAGE_METRICS:
+                stage_samples[metric_key].append(
+                    current_stage_seconds[metric_key]
+                )
 
         submit_wait_samples.append(submit_wait_ms)
 
@@ -335,10 +454,26 @@ def run_method_for_stg(method_cfg, input_file):
     max_submit_wait_ms = max(measured_submit_samples)
 
     avg_kernel_ms = None
+    avg_stage_seconds = {}
 
     if len(kernel_samples) == RUNS:
         measured_kernel_samples = kernel_samples[WARMUP_RUNS:]
         avg_kernel_ms = mean(measured_kernel_samples)
+
+    if method == "proposed":
+        for metric_key, _ in PROPOSED_STAGE_METRICS:
+            measured_stage_samples = stage_samples[metric_key][
+                WARMUP_RUNS:
+            ]
+
+            if not measured_stage_samples:
+                raise RuntimeError(
+                    f"No measured samples: {metric_key}"
+                )
+
+            avg_stage_seconds[metric_key] = mean(
+                measured_stage_samples
+            )
 
     print()
     print(f"[RESULT] {input_file.stem} / {method}")
@@ -362,6 +497,15 @@ def run_method_for_stg(method_cfg, input_file):
             f"{avg_kernel_ms:.3f} ms"
         )
 
+    if avg_stage_seconds:
+        print("  proposed stage averages:")
+
+        for metric_key, display_name in PROPOSED_STAGE_METRICS:
+            print(
+                f"    {display_name:36s} = "
+                f"{avg_stage_seconds[metric_key]:.9f} s"
+            )
+
     return {
         "stg": input_file.stem,
         "stg_file": input_file.name,
@@ -372,6 +516,7 @@ def run_method_for_stg(method_cfg, input_file):
         "gpu_submit_wait_min_ms": min_submit_wait_ms,
         "gpu_submit_wait_max_ms": max_submit_wait_ms,
         "gpu_kernel_ms": avg_kernel_ms,
+        "stage_seconds": avg_stage_seconds,
     }
 
 
@@ -443,13 +588,14 @@ def calculate_speedup(results):
 
 def plot_execution_time(stg_name, results, stg_label=None):
     labels = [result["display"] for result in results]
+    colors = get_result_colors(results)
     times = [
         result["gpu_submit_wait_ms"]
         for result in results
     ]
 
-    plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, times)
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(labels, times, color=colors)
 
     plt.xlabel("Method")
     plt.ylabel("GPU Submit Wait Time [ms]")
@@ -467,22 +613,18 @@ def plot_execution_time(stg_name, results, stg_label=None):
             f"{value:.2f}",
             ha="center",
             va="bottom",
+            fontsize=14,
         )
+
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
 
     plt.tight_layout()
 
-    output_path = (
-        ROOT / f"{stg_name}_gpu_submit_wait.png"
+    save_comparison_figure(
+        f"{stg_name}_gpu_submit_wait.png"
     )
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print(f"Graph: {output_path}")
 
 
 # ============================================================
@@ -491,15 +633,17 @@ def plot_execution_time(stg_name, results, stg_label=None):
 
 def plot_speedup(stg_name, results, stg_label=None):
     labels = [result["display"] for result in results]
+    colors = get_result_colors(results)
     speedups = [result["speedup"] for result in results]
 
-    plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, speedups)
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(labels, speedups, color=colors)
 
     plt.axhline(
         y=1.0,
         linestyle="--",
         linewidth=1,
+        color=METHOD_COLORS["baseline"],
     )
 
     plt.xlabel("Method")
@@ -518,20 +662,16 @@ def plot_speedup(stg_name, results, stg_label=None):
             f"{value:.3f}x",
             ha="center",
             va="bottom",
+            fontsize=14,
         )
+
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
 
     plt.tight_layout()
 
-    output_path = ROOT / f"{stg_name}_speedup.png"
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print(f"Graph: {output_path}")
+    save_comparison_figure(f"{stg_name}_speedup.png")
 
 
 # ============================================================
@@ -540,10 +680,11 @@ def plot_speedup(stg_name, results, stg_label=None):
 
 def plot_sm_active(stg_name, results, stg_label=None):
     labels = [result["display"] for result in results]
+    colors = get_result_colors(results)
     sm_active_values = [result["sm_active_pct"] for result in results]
 
-    plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, sm_active_values)
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(labels, sm_active_values, color=colors)
 
     plt.xlabel("Method")
     plt.ylabel("Average SMs Active [%]")
@@ -561,20 +702,16 @@ def plot_sm_active(stg_name, results, stg_label=None):
             f"{value:.2f}%",
             ha="center",
             va="bottom",
+            fontsize=14,
         )
+
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
 
     plt.tight_layout()
 
-    output_path = ROOT / f"{stg_name}_sm_active.png"
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print(f"Graph: {output_path}")
+    save_comparison_figure(f"{stg_name}_sm_active.png")
 
 
 # ============================================================
@@ -622,7 +759,7 @@ def plot_all_execution_times(all_stg_results):
     x = np.arange(len(stg_names))
     width = 0.18
 
-    plt.figure(figsize=(13, 6))
+    plt.figure(figsize=(13, 7))
 
     for method_index, method_cfg in enumerate(METHODS):
         values = []
@@ -648,6 +785,7 @@ def plot_all_execution_times(all_stg_results):
             values,
             width,
             label=method_cfg["display"],
+            color=method_cfg["color"],
         )
 
         for bar, value in zip(bars, values):
@@ -657,7 +795,7 @@ def plot_all_execution_times(all_stg_results):
                 f"{value:.1f}",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=14,
             )
 
     plt.xlabel("STG")
@@ -667,26 +805,27 @@ def plot_all_execution_times(all_stg_results):
     plt.xticks(
         x,
         stg_labels,
-        rotation=20,
+        rotation=8,
         ha="right",
     )
 
-    plt.legend()
+    plt.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0.0,
+    )
     plt.grid(axis="y", linestyle="--", alpha=0.4)
+
+    # 棒上の数値がタイトルに重ならないよう、上側に余白を確保する。
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
+
     plt.tight_layout()
 
-    output_path = (
-        ROOT / "all_stg_execution_time_comparison.png"
+    save_comparison_figure(
+        "all_stg_execution_time_comparison.png"
     )
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print(f"Graph: {output_path}")
 
 
 # ============================================================
@@ -704,7 +843,7 @@ def plot_all_speedups(all_stg_results):
     x = np.arange(len(stg_names))
     width = 0.18
 
-    plt.figure(figsize=(13, 6))
+    plt.figure(figsize=(13, 7))
 
     for method_index, method_cfg in enumerate(METHODS):
         values = []
@@ -728,6 +867,7 @@ def plot_all_speedups(all_stg_results):
             values,
             width,
             label=method_cfg["display"],
+            color=method_cfg["color"],
         )
 
         for bar, value in zip(bars, values):
@@ -737,13 +877,14 @@ def plot_all_speedups(all_stg_results):
                 f"{value:.2f}",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=14,
             )
 
     plt.axhline(
         y=1.0,
         linestyle="--",
         linewidth=1,
+        color=METHOD_COLORS["baseline"],
     )
 
     plt.xlabel("STG")
@@ -753,26 +894,27 @@ def plot_all_speedups(all_stg_results):
     plt.xticks(
         x,
         stg_labels,
-        rotation=20,
+        rotation=8,
         ha="right",
     )
 
-    plt.legend()
+    plt.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0.0,
+    )
     plt.grid(axis="y", linestyle="--", alpha=0.4)
+
+    # 棒上の数値がタイトルに重ならないよう、上側に余白を確保する。
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
+
     plt.tight_layout()
 
-    output_path = (
-        ROOT / "all_stg_speedup_comparison.png"
+    save_comparison_figure(
+        "all_stg_speedup_comparison.png"
     )
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print(f"Graph: {output_path}")
 
 
 # ============================================================
@@ -1116,7 +1258,7 @@ def plot_all_sm_active(all_sm_results):
     x = np.arange(len(stg_names))
     width = 0.18
 
-    plt.figure(figsize=(13, 6))
+    plt.figure(figsize=(13, 7))
 
     for method_index, method_cfg in enumerate(METHODS):
         values = []
@@ -1142,6 +1284,7 @@ def plot_all_sm_active(all_sm_results):
             values,
             width,
             label=method_cfg["display"],
+            color=method_cfg["color"],
         )
 
         for bar, value in zip(bars, values):
@@ -1151,7 +1294,7 @@ def plot_all_sm_active(all_sm_results):
                 f"{value:.1f}%",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=14,
             )
 
     plt.xlabel("STG")
@@ -1161,28 +1304,28 @@ def plot_all_sm_active(all_sm_results):
     plt.xticks(
         x,
         stg_labels,
-        rotation=20,
+        rotation=8,
         ha="right",
     )
 
     plt.ylim(bottom=0)
-    plt.legend()
+    plt.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0.0,
+    )
     plt.grid(axis="y", linestyle="--", alpha=0.4)
+
+    # 棒上の数値がタイトルに重ならないよう、上側に余白を確保する。
+    ax = plt.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.12)
+
     plt.tight_layout()
 
-    output_path = (
-        ROOT / "all_stg_sm_active_comparison.png"
+    save_comparison_figure(
+        "all_stg_sm_active_comparison.png"
     )
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    print()
-    print(f"Graph: {output_path}")
 
 
 # ============================================================
@@ -1221,7 +1364,7 @@ def print_all_sm_active(all_sm_results):
 # main
 # ============================================================
 
-def main():
+def run_evaluation():
 
     # ========================================================
     # 初期確認・コンパイル
@@ -1306,7 +1449,7 @@ def main():
     # ========================================================
     # PHASE 2
     # 実行時間・Speedupの図を出した後、
-    # 全5 STG × 全4手法をもう一度実行し、
+    # 全4 STG × 全4手法をもう一度実行し、
     # Nsight SystemsでSMs Activeを測定
     # ========================================================
 
@@ -1318,18 +1461,6 @@ def main():
 
     plot_all_sm_active(
         all_sm_results
-    )
-
-    mixed_stg_key = "sample_mixed_chain_parallel"
-    mixed_stg_label = STG_DISPLAY_NAMES.get(
-        mixed_stg_key,
-        mixed_stg_key,
-    )
-
-    plot_sm_active(
-        mixed_stg_key,
-        all_sm_results[mixed_stg_key],
-        stg_label=mixed_stg_label,
     )
 
     # ========================================================
@@ -1387,20 +1518,35 @@ def main():
     )
 
     print()
+    print(f"Figure directory: {FIGURE_OUTPUT_DIR}")
+    print(f"Combined PDF   : {COMBINED_FIGURE_PATH}")
     print("Generated summary PNG files:")
     print(
-        "  all_stg_execution_time_comparison.png"
+        "  comparison_figures/"
+        "all_stg_execution_time_comparison.png"
     )
     print(
-        "  all_stg_speedup_comparison.png"
+        "  comparison_figures/"
+        "all_stg_speedup_comparison.png"
     )
     print(
-        "  all_stg_sm_active_comparison.png"
-    )
-    print(
-        "  sample_mixed_chain_parallel_sm_active.png"
+        "  comparison_figures/"
+        "all_stg_sm_active_comparison.png"
     )
     print()
+
+
+def main():
+    global _ACTIVE_COMBINED_PDF
+
+    # 同じパスを使用するため、各実行で前回の集約PDFを上書きする。
+    with PdfPages(COMBINED_FIGURE_PATH) as combined_pdf:
+        _ACTIVE_COMBINED_PDF = combined_pdf
+
+        try:
+            run_evaluation()
+        finally:
+            _ACTIVE_COMBINED_PDF = None
 
 
 if __name__ == "__main__":

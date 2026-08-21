@@ -45,16 +45,13 @@
 
 ## 提案手法
 
-提案手法では，以下の流れでスケジューリングを行う．
+提案手法では，`main.cu`が以下の5段階を順に呼び出してスケジューリングと実行を行う．
 
-1. タスクグラフの依存関係を解析し，タスクをレベル化
-2. 最大レベル幅と上限5本から使用するStream数を決定
-3. Stream数に対応する非対称な初期SM配分を選択
-4. 各タスクから出口タスクまでのbottom levelを計算
-5. 全先行タスクが割当て済みのタスクから，bottom levelが大きいタスクを優先して選択
-6. 各StreamのSM数を用いてタスクの実行時間を予測し，原則として予測完了時刻が最小となるStreamへ割当て
-7. 重要タスクが最大SM数の優先Stream（既定表ではStream 0）へ集まりやすくし，背景タスクを他のStreamへ分散
-8. Stream 0をprimary context上の通常Stream，Stream 1以降をGreen Context上のStreamとして実行
+1. **STGを解析**：STGファイルを読み込み，記録された処理時間を予測実行時間としてタスク仕様へ変換し，DFGの構築とレベル化を行う．
+2. **重要度を判定**：各タスクから出口タスクまでの最長処理時間であるbottom levelを算出する．
+3. **Streamへ配置**：全先行タスクが配置済みのready集合からbottom levelが大きいタスクを選び，各StreamのSM数を考慮して原則として予測完了時刻が最小となるStreamへ配置する．重要タスクは最大SM数の優先Stream（既定表ではStream 0）へ集まりやすくし，背景タスクを他のStreamへ分散する．
+4. **実行構成を決定**：SM配分候補ごとにStage 3の配置をシミュレーションし，予測makespanが最小の構成を選択する．候補比較APIは本番の実行経路で使用するが，現行挙動を維持するため，既定では固定表または環境変数で指定されたSM配分を1候補として渡す．複数候補を渡せば，同じAPIで比較できる．
+5. **GPU上で実行**：Stream 0をprimary context上の通常Stream，Stream 1以降をGreen Context上のStreamとして作成し，TaskflowとCUDA Eventで依存関係を保って実行する．Green Context側の処理完了後はContextを解放し，SMをprimary context側で再利用できる状態に戻す．
 
 ## 使用技術
 
@@ -90,6 +87,7 @@
 - `sample_trial.stg`：ほぼ逐次的なSTG
 - `stg_to_png.py`：STG可視化スクリプト
 - `run_method_comparison.py`：全手法・全STGの自動比較スクリプト
+- `comparison_figures/`：一括評価で生成する全PNGと集約PDFの保存先
 
 ### `STG/`
 
@@ -118,12 +116,13 @@ Baseline実装．
 
 提案方式．
 
-- `main.cu`：実行本体
-- `common_types.hpp`：共通型定義
-- `task_DFG_construction.hpp`：依存グラフ構築
-- `task_levelization.hpp`：レベル化
-- `task_assignment.hpp`：bottom levelとSM数を考慮したStream割当て，Stream数別の初期SM配分
-- `resource_allocation.hpp`：Green Contextの構築とSM資源の管理
+- `main.cu`：設定を読み取り，Stage 1からStage 5までを順に呼び出す実行本体
+- `01_stg_analysis.hpp`：STG読込み，予測実行時間を含むタスク仕様への変換，DFG構築，レベル化
+- `02_task_importance.hpp`：後続関係の検証とbottom levelによるタスク重要度の算出
+- `03_stream_assignment.hpp`：ready-list schedulingと予測完了時刻に基づくStream配置
+- `04_sm_allocation_comparison.hpp`：SM配分候補の生成・検証，各候補の予測makespan比較，実行構成の決定
+- `05_green_context_execution.cuh`：CUDA StreamとGreen Contextの作成，TaskflowによるGPU実行，完了後の資源解放
+- `bench_timer.hpp`：各StageおよびGPU実行時間の計測
 
 ### その他
 
@@ -221,6 +220,27 @@ chmod +x run_batch_stgs.sh
 ./run_batch_stgs.sh
 ```
 
+提案手法の`main`を直接実行すると，終了時にStage 1からStage 5までの
+実測時間を秒単位（小数点以下9桁）で表示する．
+
+```bash
+./main ../sample_mixed_chain_parallel.stg
+```
+
+```text
+stage_1_stg_analysis_seconds: ... s
+stage_2_task_importance_seconds: ... s
+stage_3_stream_placement_seconds: ... s
+stage_4_sm_allocation_comparison_seconds: ... s
+stage_5_green_context_execution_seconds: ... s
+```
+
+`run_batch_stgs.sh`では，各STGについてウォームアップ2回を除いた10回の
+段階別平均時間を秒単位で表示する．既存の実行時間評価との互換性を保つため，
+`gpu_submit_wait_ms`などの従来のミリ秒出力も維持する．
+ルートの`run_method_comparison.py`でも，Proposedの各STGについて同じ
+段階別平均時間を表示する．
+
 ## 一括評価
 
 全5種類のSTGについて，4手法を自動でビルド・実行する．
@@ -264,10 +284,16 @@ Speedupが1より大きい場合，Baselineより高速である．
 
 ### 出力例
 
-* `sample_mixed_chain_parallel_gpu_submit_wait.png`
-* `sample_mixed_chain_parallel_speedup.png`
-* `all_stg_execution_time_comparison.png`
-* `all_stg_speedup_comparison.png`
+生成する図はすべて`comparison_figures/`へ保存される．
+
+* `comparison_figures/sample_mixed_chain_parallel_gpu_submit_wait.png`
+* `comparison_figures/sample_mixed_chain_parallel_speedup.png`
+* `comparison_figures/all_stg_execution_time_comparison.png`
+* `comparison_figures/all_stg_speedup_comparison.png`
+* `comparison_figures/all_method_comparison_figures.pdf`：全生成図をまとめた複数ページPDF
+
+同じコマンドを再実行すると，同名のPNGとPDFを最新結果で上書きする．
+各図の手法別配色は，Baselineを青，Existingを橙，Existing + GCを緑，Proposedを赤に統一する．
 
 ## Phase 2：SMs Active測定
 
@@ -306,7 +332,7 @@ GPU処理開始から終了までの区間について平均値を求め，各�
 ### 出力
 
 ```text
-all_stg_sm_active_comparison.png
+comparison_figures/all_stg_sm_active_comparison.png
 ```
 
 ## 評価指標
@@ -559,14 +585,19 @@ stream[i] SM=<X> [GC]
 
 ## 主な生成ファイル
 
-一括評価を実行すると，以下のようなPNGが生成される．
+一括評価を実行すると，すべてのPNGが`comparison_figures/`に生成される．
+さらに，全PNGと同じ図を次の複数ページPDFへまとめる．
+
+```text
+comparison_figures/all_method_comparison_figures.pdf
+```
 
 ### 全STG比較
 
 ```text
-all_stg_execution_time_comparison.png
-all_stg_speedup_comparison.png
-all_stg_sm_active_comparison.png
+comparison_figures/all_stg_execution_time_comparison.png
+comparison_figures/all_stg_speedup_comparison.png
+comparison_figures/all_stg_sm_active_comparison.png
 ```
 
 ### STGごとの比較
@@ -574,11 +605,9 @@ all_stg_sm_active_comparison.png
 例：
 
 ```text
-sample_mixed_chain_parallel_gpu_submit_wait.png
-sample_mixed_chain_parallel_speedup.png
+comparison_figures/sample_mixed_chain_parallel_gpu_submit_wait.png
+comparison_figures/sample_mixed_chain_parallel_speedup.png
 ```
 
 他のSTGについても同様のファイルが生成される．
-
-```
-```
+再実行時は各ファイルを最新の評価結果で上書きする．

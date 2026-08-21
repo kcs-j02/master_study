@@ -67,17 +67,95 @@ measure_average() {
   local logfile
   local time_ms
   local average
+  local collect_stage_times=0
+  local stage_index
+  local stage_value
+  local stage_average
+
+  local -a stage_keys=(
+    "stage_1_stg_analysis_seconds"
+    "stage_2_task_importance_seconds"
+    "stage_3_stream_placement_seconds"
+    "stage_4_sm_allocation_comparison_seconds"
+    "stage_5_green_context_execution_seconds"
+  )
+  local -a stage_labels=(
+    "Stage 1 - STG analysis"
+    "Stage 2 - Task importance"
+    "Stage 3 - Stream placement"
+    "Stage 4 - SM allocation comparison"
+    "Stage 5 - Green Context execution"
+  )
+  local -a stage_sums=("0" "0" "0" "0" "0")
+  local -a stage_values=()
+
+  if [ "$method_name" = "Proposed" ]; then
+    collect_stage_times=1
+  fi
 
   for ((run=1; run<=RUNS; run++)); do
     logfile=$(mktemp)
 
-    "$executable" "$stg" > "$logfile" 2>&1
+    if [ "$method_name" = "Proposed" ]; then
+      if ! STG_DISABLE_STREAM_PLOT=1 \
+        "$executable" "$stg" > "$logfile" 2>&1; then
+        echo \
+          "[$method_name] execution failed: $executable $stg" \
+          >&2
+        rm -f "$logfile"
+        return 1
+      fi
+    else
+      if ! "$executable" "$stg" > "$logfile" 2>&1; then
+        echo \
+          "[$method_name] execution failed: $executable $stg" \
+          >&2
+        rm -f "$logfile"
+        return 1
+      fi
+    fi
 
-    time_ms=$(
-      grep 'gpu_submit_wait_ms:' "$logfile" \
-        | tail -n1 \
-        | awk '{print $2}'
-    )
+    if ! time_ms=$(
+      awk \
+        '$1 == "gpu_submit_wait_ms:" { value = $2 }
+         END {
+           if (value == "") {
+             exit 1
+           }
+           print value
+         }' \
+        "$logfile"
+    ); then
+      echo \
+        "[$method_name] gpu_submit_wait_ms is missing: $stg" \
+        >&2
+      rm -f "$logfile"
+      return 1
+    fi
+
+    if (( collect_stage_times )); then
+      for stage_index in "${!stage_keys[@]}"; do
+        if ! stage_value=$(
+          awk \
+            -v key="${stage_keys[$stage_index]}:" \
+            '$1 == key { value = $2 }
+             END {
+               if (value == "") {
+                 exit 1
+               }
+               print value
+             }' \
+            "$logfile"
+        ); then
+          echo \
+            "[$method_name] ${stage_keys[$stage_index]} is missing: $stg" \
+            >&2
+          rm -f "$logfile"
+          return 1
+        fi
+        stage_values[$stage_index]="$stage_value"
+      done
+    fi
 
     rm -f "$logfile"
 
@@ -90,9 +168,28 @@ measure_average() {
           -v b="$time_ms" \
           'BEGIN { printf "%.10f", a + b }'
       )
+
+      if (( collect_stage_times )); then
+        for stage_index in "${!stage_keys[@]}"; do
+          stage_sums[$stage_index]=$(
+            awk \
+              -v a="${stage_sums[$stage_index]}" \
+              -v b="${stage_values[$stage_index]}" \
+              'BEGIN { printf "%.12f", a + b }'
+          )
+        done
+      fi
+
       ((count+=1))
     fi
   done
+
+  if (( count == 0 )); then
+    echo \
+      "[$method_name] no runs remain after warmup: $stg" \
+      >&2
+    return 1
+  fi
 
   average=$(
     awk \
@@ -100,6 +197,25 @@ measure_average() {
       -v count="$count" \
       'BEGIN { printf "%.3f", sum / count }'
   )
+
+  if (( collect_stage_times )); then
+    echo >&2
+    echo "[$method_name] average stage times after warmup:" >&2
+
+    for stage_index in "${!stage_keys[@]}"; do
+      stage_average=$(
+        awk \
+          -v sum="${stage_sums[$stage_index]}" \
+          -v count="$count" \
+          'BEGIN { printf "%.9f", sum / count }'
+      )
+
+      printf "  %-36s %14s s\n" \
+        "${stage_labels[$stage_index]}" \
+        "$stage_average" \
+        >&2
+    done
+  fi
 
   echo "$average"
 }
@@ -245,6 +361,18 @@ for stg in "${STGS[@]}"; do
       "$stg" \
       "Proposed"
   )
+
+  stream_csv="$PROPOSED_DIR/stream_plots/${name}_stream_makespan.csv"
+  stream_png="$PROPOSED_DIR/stream_plots/${name}_stream_makespan.png"
+
+  if [ -f "$stream_csv" ]; then
+    python3 "$PROPOSED_DIR/plot_stream_makespan.py" \
+      "$stream_csv" \
+      "$stream_png"
+    echo "[Stream graph] $stream_png" >&2
+  else
+    echo "[Stream graph] CSV not found: $stream_csv" >&2
+  fi
 
   speedup=$(
     awk \
