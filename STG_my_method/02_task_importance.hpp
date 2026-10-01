@@ -16,56 +16,18 @@
  * ================================================================
  * Stage 2
  *
- * SM配分を考慮した予測bottom levelを算出する。
+ * proc_timeと後続タスクだけからbottom levelを算出する。
  * ================================================================
  *
- * 重要:
+ * BL(i)
  *
- *   kSchedulingReferenceSmCount = 114
- *     GPU全体のSM数
- *
- *   kTaskParallelSmLimit = 114
- *     1タスクに許可する最大SM数
- *
- *   kProcTimeReferenceSmCount = 64
- *     proc_timeを取得した基準SM数
- *
- *
- * 現在の予測モデルでは、
- * 64 SMより多く与えても追加の理想速度向上を仮定しない。
- *
- *
- * 例:
- *
- *   8 SM
- *     -> base * 64 / 8
- *
- *   16 SM
- *     -> base * 64 / 16
- *
- *   32 SM
- *     -> base * 64 / 32
- *
- *   64 SM
- *     -> base
- *
- *   82 SM
- *     -> base
- *
- *   114 SM
- *     -> base
- *
- *
- * 各タスクについて各Stream上の予測実行時間を求め、
- * その平均を代表予測時間とする。
- *
- *
- * BL_hat(i)
- *
- *   = p_hat(i)
- *     + max BL_hat(j)
+ *   = proc_time(i)
+ *     + max BL(j)
  *
  *       j in succ(i)
+ *
+ * SM数は重要度に反映しない。
+ * SM数別の予測実行時間はStage 3のStream配置でのみ使用する。
  * ================================================================
  */
 
@@ -78,15 +40,7 @@ struct TaskImportanceResult {
   std::unordered_map<
       int,
       double
-  > predicted_proc_times;
-
-  std::unordered_map<
-      int,
-      double
   > bottom_levels;
-
-  std::vector<int>
-      stream_sm_counts;
 };
 
 
@@ -342,63 +296,6 @@ estimate_task_proc_time_on_stream(
 }
 
 
-/*
- * ================================================================
- * Stage 2用の代表予測実行時間
- * ================================================================
- *
- * SM配分候補に含まれる全Stream上での
- * 予測実行時間を平均する。
- */
-inline double
-estimate_representative_task_proc_time(
-    const TaskSpec& task,
-
-    const std::vector<int>&
-        stream_sm_counts,
-
-    int reference_sm_count =
-        kSchedulingReferenceSmCount
-) {
-  validate_stream_sm_counts(
-      stream_sm_counts
-  );
-
-
-  if (
-      reference_sm_count <= 0
-  ) {
-    throw std::invalid_argument(
-        "reference_sm_count must be positive"
-    );
-  }
-
-
-  double total =
-      0.0;
-
-
-  for (
-      const int sm_count :
-      stream_sm_counts
-  ) {
-    total +=
-        estimate_task_proc_time_on_stream(
-            task,
-            sm_count,
-            reference_sm_count
-        );
-  }
-
-
-  return
-      total /
-      static_cast<double>(
-          stream_sm_counts.size()
-      );
-}
-
-
 namespace task_importance_detail {
 
 
@@ -536,11 +433,11 @@ make_successor_table(
 
 /*
  * ================================================================
- * 予測bottom levelを再帰的に計算
+ * bottom levelを再帰的に計算
  * ================================================================
  */
 inline double
-calculate_predicted_bottom_level(
+calculate_bottom_level(
     int task_id,
 
     const std::unordered_map<
@@ -551,7 +448,7 @@ calculate_predicted_bottom_level(
     const std::unordered_map<
         int,
         double
-    >& predicted_proc_times,
+    >& proc_times,
 
     std::unordered_map<
         int,
@@ -618,17 +515,17 @@ calculate_predicted_bottom_level(
 
 
   const auto time_it =
-      predicted_proc_times.find(
+      proc_times.find(
           task_id
       );
 
 
   if (
       time_it ==
-      predicted_proc_times.end()
+      proc_times.end()
   ) {
     throw std::runtime_error(
-        "predicted processing time not found: " +
+        "processing time not found: " +
         std::to_string(task_id)
     );
   }
@@ -646,10 +543,10 @@ calculate_predicted_bottom_level(
         std::max(
             longest_successor_path,
 
-            calculate_predicted_bottom_level(
+            calculate_bottom_level(
                 succ_id,
                 successors,
-                predicted_proc_times,
+                proc_times,
                 visit_state,
                 bottom_levels
             )
@@ -677,13 +574,13 @@ calculate_predicted_bottom_level(
 
 
 /*
- * 全タスクの予測bottom level
+ * 全タスクのbottom level
  */
 inline std::unordered_map<
     int,
     double
 >
-calculate_predicted_bottom_levels(
+calculate_bottom_levels(
     const std::vector<TaskSpec>& tasks,
 
     const std::unordered_map<
@@ -694,7 +591,7 @@ calculate_predicted_bottom_levels(
     const std::unordered_map<
         int,
         double
-    >& predicted_proc_times
+    >& proc_times
 ) {
   std::unordered_map<
       int,
@@ -719,10 +616,10 @@ calculate_predicted_bottom_levels(
 
 
   for (const auto& task : tasks) {
-    calculate_predicted_bottom_level(
+    calculate_bottom_level(
         task.id,
         successors,
-        predicted_proc_times,
+        proc_times,
         visit_state,
         bottom_levels
     );
@@ -740,18 +637,10 @@ calculate_predicted_bottom_levels(
  * ================================================================
  * Stage 2本体
  * ================================================================
- *
- * SM配分候補ごとに呼び出す。
  */
 inline TaskImportanceResult
 evaluate_task_importance(
-    const std::vector<TaskSpec>& tasks,
-
-    const std::vector<int>&
-        stream_sm_counts,
-
-    int reference_sm_count =
-        kSchedulingReferenceSmCount
+    const std::vector<TaskSpec>& tasks
 ) {
   if (
       tasks.empty()
@@ -761,21 +650,6 @@ evaluate_task_importance(
     );
   }
 
-
-  validate_stream_sm_counts(
-      stream_sm_counts
-  );
-
-
-  if (
-      reference_sm_count <= 0
-  ) {
-    throw std::invalid_argument(
-        "reference_sm_count must be positive"
-    );
-  }
-
-
   const auto task_index =
       task_importance_detail::
           make_task_index(
@@ -784,14 +658,6 @@ evaluate_task_importance(
 
 
   TaskImportanceResult result;
-
-
-  /*
-   * Stage 3で同じSM配分を使っているか確認するため保持。
-   */
-  result.stream_sm_counts =
-      stream_sm_counts;
-
 
   /*
    * successor
@@ -805,35 +671,39 @@ evaluate_task_importance(
 
 
   /*
-   * 各タスクの代表予測実行時間
+   * 各タスクのproc_time。
+   * bottom level計算中だけ使用し、結果には保持しない。
    */
-  result.predicted_proc_times.reserve(
+  std::unordered_map<int, double>
+      proc_times;
+
+
+  proc_times.reserve(
       tasks.size()
   );
 
 
   for (const auto& task : tasks) {
-    result.predicted_proc_times.emplace(
+    proc_times.emplace(
         task.id,
-
-        estimate_representative_task_proc_time(
-            task,
-            stream_sm_counts,
-            reference_sm_count
+        static_cast<double>(
+            get_task_importance_cost(
+                task
+            )
         )
     );
   }
 
 
   /*
-   * 予測bottom level
+   * bottom level
    */
   result.bottom_levels =
       task_importance_detail::
-          calculate_predicted_bottom_levels(
+          calculate_bottom_levels(
               tasks,
               result.successors,
-              result.predicted_proc_times
+              proc_times
           );
 
 

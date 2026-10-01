@@ -373,7 +373,7 @@ inline void validate_green_context_sm_counts(
 
 
   /*
-   * Stage 2～4で予測したStream 0のSM数と
+   * Stage 3～4で予測したStream 0のSM数と
    * 実際に残るSM数を一致させる。
    */
   if (

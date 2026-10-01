@@ -10,6 +10,8 @@ from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 
 # ============================================================
@@ -62,6 +64,34 @@ STG_DISPLAY_NAMES = {
 }
 
 
+
+
+def format_stg_label_for_axis(label):
+    label_map = {
+        "Fully Parallel": "Fully\nParallel",
+        "Multiple Long Branches": "Multiple Long\nBranches",
+        "Mixed: Chain+Parallel ": "Mixed:\nChain+Parallel",
+    }
+    return label_map.get(label, label)
+
+
+def get_speedup_label_offset(method_index, point_index, value, total_points):
+    base_offsets = [10, 18, 26, 34]
+    dx_offsets = [-6, -2, 2, 6]
+
+    dy = base_offsets[method_index % len(base_offsets)]
+    dx = dx_offsets[method_index % len(dx_offsets)]
+
+    if value <= 1.15:
+        dy += 6
+
+    if point_index == 0:
+        dx += 6
+    elif point_index == total_points - 1:
+        dx -= 6
+
+    return dx, dy
+
 # ============================================================
 # 実行時間評価
 # ============================================================
@@ -109,6 +139,69 @@ METHOD_COLOR_MAP = {
     method_cfg["method"]: method_cfg["color"]
     for method_cfg in METHODS
 }
+
+METHOD_HATCH_MAP = {
+    "baseline": "",
+    "existing_method": "///",
+    "existing_method_gc": "xxx",
+    "proposed": "...",
+}
+
+METHOD_LINESTYLE_MAP = {
+    "baseline": "-",
+    "existing_method": "--",
+    "existing_method_gc": "-.",
+    "proposed": ":",
+}
+
+METHOD_MARKER_MAP = {
+    "baseline": "o",
+    "existing_method": "s",
+    "existing_method_gc": "^",
+    "proposed": "D",
+}
+
+METHOD_FILL_COLOR_MAP = {
+    "baseline": "#f2f2f2",
+    "existing_method": "#cfe2f3",
+    "existing_method_gc": "#d9ead3",
+    "proposed": "#f4cccc",
+}
+
+BAR_EDGE_COLOR = "black"
+LINE_COLOR = "#333333"
+
+TITLE_FONTSIZE = 20
+LABEL_FONTSIZE = 18
+TICK_FONTSIZE = 15
+LEGEND_FONTSIZE = 15
+VALUE_FONTSIZE = 15
+SMALL_VALUE_FONTSIZE = 13
+
+
+def style_bar_container(bar_container, method):
+    for bar in bar_container:
+        bar.set_facecolor(METHOD_FILL_COLOR_MAP[method])
+        bar.set_edgecolor(BAR_EDGE_COLOR)
+        bar.set_linewidth(1.5)
+        bar.set_hatch(METHOD_HATCH_MAP[method])
+
+
+def method_patch_handles():
+    handles = []
+
+    for method_cfg in METHODS:
+        handles.append(
+            Patch(
+                facecolor=METHOD_FILL_COLOR_MAP[method_cfg["method"]],
+                edgecolor=BAR_EDGE_COLOR,
+                linewidth=1.5,
+                hatch=METHOD_HATCH_MAP[method_cfg["method"]],
+                label=method_cfg["display"],
+            )
+        )
+
+    return handles
 
 
 # ============================================================
@@ -325,13 +418,13 @@ def run_method_for_stg(method_cfg, input_file):
             f"[{input_file.stem}] "
             f"[{method}] "
             f"run {i + 1:2d}/{RUNS} "
-            f"gpu_submit_wait_ms = {submit_wait_ms:.3f} ms",
+            f"gpu_submit_wait_ms = {submit_wait_ms:.3g} ms",
             end="",
         )
 
         if kernel_ms is not None:
             print(
-                f"  gpu_kernel_ms = {kernel_ms:.3f} ms"
+                f"  gpu_kernel_ms = {kernel_ms:.3g} ms"
             )
         else:
             print()
@@ -358,21 +451,21 @@ def run_method_for_stg(method_cfg, input_file):
     print(f"  num_tasks                  = {detected_num_tasks}")
     print(
         f"  gpu_submit_wait_ms average = "
-        f"{avg_submit_wait_ms:.3f} ms"
+        f"{avg_submit_wait_ms:.3g} ms"
     )
     print(
         f"  gpu_submit_wait_ms min     = "
-        f"{min_submit_wait_ms:.3f} ms"
+        f"{min_submit_wait_ms:.3g} ms"
     )
     print(
         f"  gpu_submit_wait_ms max     = "
-        f"{max_submit_wait_ms:.3f} ms"
+        f"{max_submit_wait_ms:.3g} ms"
     )
 
     if avg_kernel_ms is not None:
         print(
             f"  gpu_kernel_ms average      = "
-            f"{avg_kernel_ms:.3f} ms"
+            f"{avg_kernel_ms:.3g} ms"
         )
 
     return {
@@ -460,48 +553,91 @@ def plot_execution_time(stg_name, results, stg_label=None):
         result["gpu_submit_wait_ms"]
         for result in results
     ]
+    methods = [result["method"] for result in results]
 
-    colors = [
-        METHOD_COLOR_MAP[result["method"]]
-        for result in results
-    ]
+    x = np.arange(len(labels))
 
-    plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, times, color=colors)
+    fig, ax = plt.subplots(figsize=(8, 5))
 
-    plt.xlabel("Method")
-    plt.ylabel("GPU Submit Wait Time [ms]")
+    bar_containers = []
+
+    for xi, time_value, method in zip(x, times, methods):
+        bars = ax.bar(
+            xi,
+            time_value,
+            width=0.6,
+            zorder=2,
+        )
+        style_bar_container(bars, method)
+        bar_containers.append(bars)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.set_xlabel("Method", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Makespan [ms]", fontsize=LABEL_FONTSIZE)
 
     if stg_label is None:
         stg_label = stg_name
 
-    plt.title(f"Execution Time - {stg_label}")
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    ax.set_title(
+        f"Execution Time - {stg_label}",
+        fontsize=TITLE_FONTSIZE,
+    )
 
-    for bar, value in zip(bars, times):
-        plt.text(
+    ax.grid(
+        axis="y",
+        linestyle="--",
+        alpha=0.4,
+        zorder=0,
+    )
+
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
+    ax.margins(x=0.08)
+
+    for bars, value in zip(bar_containers, times):
+        bar = bars.patches[0]
+        ax.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height(),
-            f"{value:.2f}",
+            f"{value:.3g}",
             ha="center",
             va="bottom",
+            fontsize=VALUE_FONTSIZE,
+            bbox=dict(
+                facecolor="white",
+                edgecolor="none",
+                alpha=0.9,
+                pad=1.6,
+            ),
+            zorder=11,
+            clip_on=False,
         )
 
-    plt.tight_layout()
+    time_max = max(times) if times else 1.0
+    ax.set_ylim(0, time_max * 1.30)
+
+    ax.legend(
+        method_patch_handles(),
+        [cfg["display"] for cfg in METHODS],
+        loc="upper right",
+        fontsize=LEGEND_FONTSIZE,
+        ncol=2,
+    )
+
+    fig.tight_layout()
 
     output_path = (
         COMPARISON_FIGURE_DIR / f"{stg_name}_gpu_submit_wait.png"
     )
 
-    plt.savefig(
+    fig.savefig(
         output_path,
         dpi=300,
         bbox_inches="tight",
     )
-    plt.close()
+    plt.close(fig)
 
     print(f"Graph: {output_path}")
-
 
 # ============================================================
 # 1STG Speedupグラフ
@@ -510,39 +646,52 @@ def plot_execution_time(stg_name, results, stg_label=None):
 def plot_speedup(stg_name, results, stg_label=None):
     labels = [result["display"] for result in results]
     speedups = [result["speedup"] for result in results]
-
-    colors = [
-        METHOD_COLOR_MAP[result["method"]]
-        for result in results
-    ]
+    methods = [result["method"] for result in results]
 
     plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, speedups, color=colors)
+    ax = plt.gca()
+    bars = []
+
+    for xi, (value, method) in enumerate(zip(speedups, methods)):
+        bar_container = ax.bar(
+            xi,
+            value,
+            width=0.6,
+            zorder=2,
+        )
+        style_bar_container(bar_container, method)
+        bars.append(bar_container.patches[0])
 
     plt.axhline(
         y=1.0,
         linestyle="--",
         linewidth=1,
+        color="#666666",
     )
 
-    plt.xlabel("Method")
-    plt.ylabel("Speedup [x]")
+    plt.xlabel("Method", fontsize=LABEL_FONTSIZE)
+    plt.ylabel("Speedup [x]", fontsize=LABEL_FONTSIZE)
 
     if stg_label is None:
         stg_label = stg_name
 
-    plt.title(f"Speedup - {stg_label}")
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.title(f"Speedup - {stg_label}", fontsize=TITLE_FONTSIZE)
+    plt.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+    plt.xticks(np.arange(len(labels)), labels)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
 
     for bar, value in zip(bars, speedups):
         plt.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height(),
-            f"{value:.3f}x",
+            f"{value:.2g}x",
             ha="center",
             va="bottom",
+            fontsize=VALUE_FONTSIZE,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=1.4),
         )
 
+    plt.ylim(0, max(1.2, max(speedups) * 1.35))
     plt.tight_layout()
 
     output_path = COMPARISON_FIGURE_DIR / f"{stg_name}_speedup.png"
@@ -564,23 +713,32 @@ def plot_speedup(stg_name, results, stg_label=None):
 def plot_sm_active(stg_name, results, stg_label=None):
     labels = [result["display"] for result in results]
     sm_active_values = [result["sm_active_pct"] for result in results]
-
-    colors = [
-        METHOD_COLOR_MAP[result["method"]]
-        for result in results
-    ]
+    methods = [result["method"] for result in results]
 
     plt.figure(figsize=(8, 5))
-    bars = plt.bar(labels, sm_active_values, color=colors)
+    ax = plt.gca()
+    bars = []
 
-    plt.xlabel("Method")
-    plt.ylabel("Average SMs Active [%]")
+    for xi, (value, method) in enumerate(zip(sm_active_values, methods)):
+        bar_container = ax.bar(
+            xi,
+            value,
+            width=0.6,
+            zorder=2,
+        )
+        style_bar_container(bar_container, method)
+        bars.append(bar_container.patches[0])
+
+    plt.xlabel("Method", fontsize=LABEL_FONTSIZE)
+    plt.ylabel("Average SMs Active [%]", fontsize=LABEL_FONTSIZE)
 
     if stg_label is None:
         stg_label = stg_name
 
-    plt.title(f"SMs Active - {stg_label}")
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.title(f"SMs Active - {stg_label}", fontsize=TITLE_FONTSIZE)
+    plt.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+    plt.xticks(np.arange(len(labels)), labels)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
 
     for bar, value in zip(bars, sm_active_values):
         plt.text(
@@ -589,8 +747,11 @@ def plot_sm_active(stg_name, results, stg_label=None):
             f"{value:.2f}%",
             ha="center",
             va="bottom",
+            fontsize=VALUE_FONTSIZE,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=1.4),
         )
 
+    plt.ylim(0, max(sm_active_values) * 1.18)
     plt.tight_layout()
 
     output_path = COMPARISON_FIGURE_DIR / f"{stg_name}_sm_active.png"
@@ -627,8 +788,8 @@ def print_stg_results(stg_name, results):
     for result in results:
         print(
             f"{result['method']:22s}"
-            f"{result['gpu_submit_wait_ms']:16.3f}"
-            f"{result['speedup']:13.3f}x"
+            f"{result['gpu_submit_wait_ms']:16.3g}"
+            f"{result['speedup']:13.2g}x"
             f"{result['reduction_percent']:15.2f}%"
         )
 
@@ -639,7 +800,7 @@ def print_stg_results(stg_name, results):
 # 全STG 実行時間グラフ
 # ============================================================
 
-def plot_all_execution_times(all_stg_results):
+def plot_all_execution_time_and_speedup(all_stg_results):
     stg_names = [
         name
         for name in all_stg_results.keys()
@@ -647,17 +808,37 @@ def plot_all_execution_times(all_stg_results):
     ]
 
     stg_labels = [
-        STG_DISPLAY_NAMES.get(name, name)
+        format_stg_label_for_axis(
+            STG_DISPLAY_NAMES.get(name, name)
+        )
         for name in stg_names
     ]
 
     x = np.arange(len(stg_names))
     width = 0.18
+    method_offsets = [
+        (method_index - (len(METHODS) - 1) / 2) * width
+        for method_index in range(len(METHODS))
+    ]
 
-    plt.figure(figsize=(13, 6))
+    fig, ax_speedup = plt.subplots(figsize=(14, 6.5))
+    ax_time = ax_speedup.twinx()
+
+    ax_speedup.set_zorder(3)
+    ax_time.set_zorder(2)
+    ax_speedup.patch.set_alpha(0.0)
+
+    speedup_by_stg = {
+        stg_name: []
+        for stg_name in stg_names
+    }
+    positions_by_stg = {
+        stg_name: []
+        for stg_name in stg_names
+    }
 
     for method_index, method_cfg in enumerate(METHODS):
-        values = []
+        time_values = []
 
         for stg_name in stg_names:
             result = next(
@@ -666,50 +847,144 @@ def plot_all_execution_times(all_stg_results):
                 if result["method"] == method_cfg["method"]
             )
 
-            values.append(
-                result["gpu_submit_wait_ms"]
-            )
+            time_values.append(result["gpu_submit_wait_ms"])
+            speedup_by_stg[stg_name].append(result["speedup"])
 
-        offset = (
-            method_index
-            - (len(METHODS) - 1) / 2
-        ) * width
+        bar_positions = x + method_offsets[method_index]
 
-        bars = plt.bar(
-            x + offset,
-            values,
+        bars = ax_time.bar(
+            bar_positions,
+            time_values,
             width,
-            label=method_cfg["display"],
-            color=method_cfg["color"],
+            zorder=1,
         )
+        style_bar_container(bars, method_cfg["method"])
 
-        for bar, value in zip(bars, values):
-            plt.text(
+        for stg_name, xpos in zip(stg_names, bar_positions):
+            positions_by_stg[stg_name].append(xpos)
+
+        for bar, value in zip(bars, time_values):
+            ax_time.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
-                f"{value:.1f}",
+                f"{value:.3g}",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=SMALL_VALUE_FONTSIZE,
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.92,
+                    pad=1.3,
+                ),
+                zorder=11,
+                clip_on=False,
             )
 
-    plt.xlabel("STG")
-    plt.ylabel("GPU Submit Wait Time [ms]")
-    plt.title("Execution Time Comparison Across STGs")
+    first_line = None
 
-    plt.xticks(
-        x,
-        stg_labels,
-        rotation=20,
-        ha="right",
+    for stg_index, stg_name in enumerate(stg_names):
+        line = ax_speedup.plot(
+            positions_by_stg[stg_name],
+            speedup_by_stg[stg_name],
+            color=LINE_COLOR,
+            marker="o",
+            linewidth=2.4,
+            markersize=6.5,
+            zorder=10,
+        )
+
+        if first_line is None:
+            first_line = line
+
+        for method_index, (xpos, value) in enumerate(
+            zip(positions_by_stg[stg_name], speedup_by_stg[stg_name])
+        ):
+            dx, dy = get_speedup_label_offset(
+                method_index,
+                method_index,
+                value,
+                len(METHODS),
+            )
+            ax_speedup.annotate(
+                f"{value:.2g}x",
+                xy=(xpos, value),
+                xytext=(dx, dy + 4),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=SMALL_VALUE_FONTSIZE,
+                color="black",
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.95,
+                    pad=1.3,
+                ),
+                zorder=12,
+                clip_on=False,
+            )
+
+    ax_speedup.axhline(
+        y=1.0,
+        linestyle="--",
+        linewidth=1,
+        color="#666666",
+        alpha=0.8,
+        zorder=2,
     )
 
-    plt.legend()
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    ax_speedup.set_xlabel("STG", fontsize=LABEL_FONTSIZE)
+    ax_speedup.set_ylabel("Speedup [x]", fontsize=LABEL_FONTSIZE)
+    ax_time.set_ylabel("GPU Submit Wait Time [ms]", fontsize=LABEL_FONTSIZE)
+    ax_speedup.set_title(
+        "Execution Time and Speedup Comparison Across STGs",
+        fontsize=TITLE_FONTSIZE,
+    )
+
+    ax_speedup.set_xticks(x)
+    ax_speedup.set_xticklabels(stg_labels)
+
+    ax_speedup.tick_params(axis="both", labelsize=TICK_FONTSIZE)
+    ax_time.tick_params(axis="y", labelsize=TICK_FONTSIZE)
+    ax_speedup.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+    ax_speedup.margins(x=0.05)
+
+    time_max = max(
+        result["gpu_submit_wait_ms"]
+        for results in all_stg_results.values()
+        for result in results
+        if result["stg"] != "sample_mixed_chain_parallel"
+    )
+    speedup_max = max(
+        result["speedup"]
+        for results in all_stg_results.values()
+        for result in results
+        if result["stg"] != "sample_mixed_chain_parallel"
+    )
+
+    ax_time.set_ylim(0, time_max * 1.32)
+    ax_speedup.set_ylim(0, max(1.2, speedup_max * 1.65))
+
+    ax_speedup.legend(
+        first_line,
+        ["Speedup"],
+        loc="upper left",
+        fontsize=LEGEND_FONTSIZE,
+    )
+
+    ax_time.legend(
+        method_patch_handles(),
+        [cfg["display"] for cfg in METHODS],
+        loc="upper right",
+        fontsize=LEGEND_FONTSIZE,
+        ncol=2,
+    )
+
     plt.tight_layout()
 
     output_path = (
-        COMPARISON_FIGURE_DIR / "all_stg_execution_time_comparison.png"
+        COMPARISON_FIGURE_DIR / "all_stg_execution_time_speedup_comparison.png"
     )
 
     plt.savefig(
@@ -723,93 +998,303 @@ def plot_all_execution_times(all_stg_results):
 
 
 # ============================================================
-# 全STG Speedupグラフ
+# 全STG 分割グラフ
 # ============================================================
 
-def plot_all_speedups(all_stg_results):
-    stg_names = [
+def get_all_comparison_stg_names(results_by_stg):
+    return [
         name
-        for name in all_stg_results.keys()
+        for name in results_by_stg.keys()
         if name != "sample_mixed_chain_parallel"
     ]
 
+
+def plot_all_grouped_metric(
+    all_stg_results,
+    result_key,
+    ylabel,
+    title,
+    filename,
+    value_format,
+):
+    stg_names = get_all_comparison_stg_names(all_stg_results)
     stg_labels = [
-        STG_DISPLAY_NAMES.get(name, name)
+        format_stg_label_for_axis(STG_DISPLAY_NAMES.get(name, name))
         for name in stg_names
     ]
-
     x = np.arange(len(stg_names))
     width = 0.18
 
-    plt.figure(figsize=(13, 6))
+    fig, ax = plt.subplots(figsize=(14, 6.5))
 
     for method_index, method_cfg in enumerate(METHODS):
         values = []
-
         for stg_name in stg_names:
             result = next(
                 result
                 for result in all_stg_results[stg_name]
                 if result["method"] == method_cfg["method"]
             )
+            values.append(result[result_key])
 
-            values.append(result["speedup"])
-
-        offset = (
-            method_index
-            - (len(METHODS) - 1) / 2
-        ) * width
-
-        bars = plt.bar(
-            x + offset,
-            values,
-            width,
-            label=method_cfg["display"],
-            color=method_cfg["color"],
-        )
+        offset = (method_index - (len(METHODS) - 1) / 2) * width
+        bars = ax.bar(x + offset, values, width, zorder=2)
+        style_bar_container(bars, method_cfg["method"])
 
         for bar, value in zip(bars, values):
-            plt.text(
+            ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
-                f"{value:.2f}",
+                value_format.format(value),
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=SMALL_VALUE_FONTSIZE,
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.92,
+                    pad=1.3,
+                ),
+                zorder=3,
+                clip_on=False,
             )
 
-    plt.axhline(
-        y=1.0,
-        linestyle="--",
-        linewidth=1,
+    ax.set_xlabel("STG", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel(ylabel, fontsize=LABEL_FONTSIZE)
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
+    ax.set_xticks(x)
+    ax.set_xticklabels(stg_labels)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
+    ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+    ax.margins(x=0.05)
+    ax.legend(
+        method_patch_handles(),
+        [cfg["display"] for cfg in METHODS],
+        loc="upper right",
+        fontsize=LEGEND_FONTSIZE,
+        ncol=2,
     )
 
-    plt.xlabel("STG")
-    plt.ylabel("Speedup [x]")
-    plt.title("Speedup Comparison Across STGs")
+    if result_key == "speedup":
+        ax.axhline(
+            y=1.0,
+            linestyle="--",
+            linewidth=1,
+            color="#666666",
+            alpha=0.8,
+        )
+        max_value = max(
+            result[result_key]
+            for results in all_stg_results.values()
+            for result in results
+            if result["stg"] != "sample_mixed_chain_parallel"
+        )
+        ax.set_ylim(0, max(1.2, max_value * 1.25))
 
-    plt.xticks(
-        x,
-        stg_labels,
-        rotation=20,
-        ha="right",
-    )
-
-    plt.legend()
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
     plt.tight_layout()
-
-    output_path = (
-        COMPARISON_FIGURE_DIR / "all_stg_speedup_comparison.png"
-    )
-
-    plt.savefig(
-        output_path,
-        dpi=300,
-        bbox_inches="tight",
-    )
+    output_path = COMPARISON_FIGURE_DIR / filename
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
+    print(f"Graph: {output_path}")
 
+
+def plot_all_execution_time_split(all_stg_results):
+    plot_all_grouped_metric(
+        all_stg_results,
+        "gpu_submit_wait_ms",
+        "GPU Submit Wait Time [ms]",
+        "Execution Time Comparison Across STGs",
+        "all_stg_execution_time_comparison.png",
+        "{:.3g}",
+    )
+
+
+def plot_all_speedup_split(all_stg_results):
+    plot_all_grouped_metric(
+        all_stg_results,
+        "speedup",
+        "Speedup [x]",
+        "Speedup Comparison Across STGs",
+        "all_stg_speedup_comparison.png",
+        "{:.2g}x",
+    )
+
+
+def plot_execution_time_vs_sm_active(all_stg_results, all_sm_results):
+    stg_names = get_all_comparison_stg_names(all_stg_results)
+    column_count = 2
+    row_count = (len(stg_names) + column_count - 1) // column_count
+    fig, axes = plt.subplots(
+        row_count,
+        column_count,
+        figsize=(14, 10),
+        sharey=True,
+        squeeze=False,
+    )
+
+    all_sm_values = [
+        result["sm_active_pct"]
+        for stg_name in stg_names
+        for result in all_sm_results[stg_name]
+    ]
+    shared_y_min = max(0.0, min(all_sm_values) - 7.0)
+    shared_y_max = min(105.0, max(all_sm_values) + 5.0)
+
+    label_offsets = {
+        "baseline": (-8, 10),
+        "existing_method": (8, 10),
+        "existing_method_gc": (8, -16),
+        "proposed": (8, 10),
+    }
+
+    for ax, stg_name in zip(axes.flat, stg_names):
+        sm_by_method = {
+            result["method"]: result["sm_active_pct"]
+            for result in all_sm_results[stg_name]
+        }
+
+        execution_times = []
+        sm_values = []
+
+        for method_cfg in METHODS:
+            time_result = next(
+                result
+                for result in all_stg_results[stg_name]
+                if result["method"] == method_cfg["method"]
+            )
+
+            method = method_cfg["method"]
+            execution_time = time_result["gpu_submit_wait_ms"]
+            sm_active = sm_by_method[method]
+            execution_times.append(execution_time)
+            sm_values.append(sm_active)
+
+            ax.scatter(
+                execution_time,
+                sm_active,
+                s=125,
+                color=METHOD_COLOR_MAP[method],
+                marker=METHOD_MARKER_MAP[method],
+                edgecolors="black",
+                linewidths=1.0,
+                zorder=3,
+            )
+
+            dx, dy = label_offsets[method]
+            ax.annotate(
+                method_cfg["display"],
+                xy=(execution_time, sm_active),
+                xytext=(dx, dy),
+                textcoords="offset points",
+                ha="right" if dx < 0 else "left",
+                va="bottom" if dy >= 0 else "top",
+                fontsize=11,
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.82,
+                    pad=0.8,
+                ),
+                zorder=4,
+            )
+
+        execution_times = np.asarray(execution_times, dtype=float)
+        sm_values = np.asarray(sm_values, dtype=float)
+        correlation = float(np.corrcoef(execution_times, sm_values)[0, 1])
+
+        if np.ptp(execution_times) > 0.0:
+            slope, intercept = np.polyfit(execution_times, sm_values, 1)
+            fit_x = np.linspace(
+                execution_times.min(),
+                execution_times.max(),
+                100,
+            )
+            ax.plot(
+                fit_x,
+                slope * fit_x + intercept,
+                color="#555555",
+                linestyle="--",
+                linewidth=1.8,
+                alpha=0.85,
+                zorder=2,
+            )
+
+        x_padding = max(np.ptp(execution_times) * 0.12, 5.0)
+        ax.set_xlim(
+            execution_times.min() - x_padding,
+            execution_times.max() + x_padding,
+        )
+        ax.set_ylim(shared_y_min, shared_y_max)
+        ax.set_title(
+            STG_DISPLAY_NAMES.get(stg_name, stg_name).strip(),
+            fontsize=17,
+        )
+        ax.text(
+            0.04,
+            0.06,
+            f"Pearson r = {correlation:.2f}",
+            transform=ax.transAxes,
+            fontsize=13,
+            bbox=dict(
+                facecolor="white",
+                edgecolor="#777777",
+                alpha=0.9,
+                pad=3.0,
+            ),
+            zorder=5,
+        )
+        ax.tick_params(axis="both", labelsize=12)
+        ax.grid(True, linestyle="--", alpha=0.35, zorder=0)
+
+    for ax in axes.flat[len(stg_names):]:
+        ax.set_visible(False)
+
+    method_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=METHOD_MARKER_MAP[method_cfg["method"]],
+            color=METHOD_COLOR_MAP[method_cfg["method"]],
+            markeredgecolor="black",
+            markeredgewidth=1.0,
+            linestyle="None",
+            markersize=9,
+            label=method_cfg["display"],
+        )
+        for method_cfg in METHODS
+    ]
+
+    fig.suptitle(
+        "Execution Time vs. SM Utilization by STG",
+        fontsize=TITLE_FONTSIZE,
+        y=0.98,
+    )
+    fig.supxlabel(
+        "GPU Submit Wait Time [ms]",
+        fontsize=LABEL_FONTSIZE,
+        y=0.035,
+    )
+    fig.supylabel(
+        "Average SMs Active [%]",
+        fontsize=LABEL_FONTSIZE,
+        x=0.035,
+    )
+    fig.legend(
+        handles=method_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.94),
+        fontsize=LEGEND_FONTSIZE,
+        ncol=len(METHODS),
+        frameon=True,
+    )
+
+    fig.tight_layout(rect=(0.055, 0.055, 1.0, 0.90))
+    output_path = (
+        COMPARISON_FIGURE_DIR
+        / "all_stg_execution_time_sm_active_comparison.png"
+    )
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
     print(f"Graph: {output_path}")
 
 
@@ -838,9 +1323,9 @@ def print_all_results(all_stg_results):
             print(
                 f"  "
                 f"{result['display']:15s} "
-                f"{result['gpu_submit_wait_ms']:10.3f} ms"
+                f"{result['gpu_submit_wait_ms']:10.3g} ms"
                 f"   "
-                f"{result['speedup']:7.3f}x"
+                f"{result['speedup']:7.2g}x"
                 f"   "
                 f"{result['reduction_percent']:7.2f}%"
             )
@@ -1151,14 +1636,17 @@ def plot_all_sm_active(all_sm_results):
     ]
 
     stg_labels = [
-        STG_DISPLAY_NAMES.get(name, name)
+        format_stg_label_for_axis(
+            STG_DISPLAY_NAMES.get(name, name)
+        )
         for name in stg_names
     ]
 
     x = np.arange(len(stg_names))
     width = 0.18
 
-    plt.figure(figsize=(13, 6))
+    plt.figure(figsize=(14, 6.5))
+    ax = plt.gca()
 
     for method_index, method_cfg in enumerate(METHODS):
         values = []
@@ -1169,48 +1657,59 @@ def plot_all_sm_active(all_sm_results):
                 for result in all_sm_results[stg_name]
                 if result["method"] == method_cfg["method"]
             )
-
-            values.append(
-                result["sm_active_pct"]
-            )
+            values.append(result["sm_active_pct"])
 
         offset = (
-            method_index
-            - (len(METHODS) - 1) / 2
+            method_index - (len(METHODS) - 1) / 2
         ) * width
 
-        bars = plt.bar(
+        bars = ax.bar(
             x + offset,
             values,
             width,
-            label=method_cfg["display"],
-            color=method_cfg["color"],
+            zorder=2,
         )
+        style_bar_container(bars, method_cfg["method"])
 
         for bar, value in zip(bars, values):
-            plt.text(
+            ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
                 f"{value:.1f}%",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=SMALL_VALUE_FONTSIZE,
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="none",
+                    alpha=0.92,
+                    pad=1.3,
+                ),
+                zorder=3,
+                clip_on=False,
             )
 
-    plt.xlabel("STG")
-    plt.ylabel("Average SMs Active [%]")
-    plt.title("SMs Active Comparison Across STGs")
+    ax.set_xlabel("STG", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Average SMs Active [%]", fontsize=LABEL_FONTSIZE)
+    ax.set_title(
+        "SMs Active Comparison Across STGs",
+        fontsize=TITLE_FONTSIZE,
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(stg_labels)
+    ax.tick_params(axis="both", labelsize=TICK_FONTSIZE)
+    ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+    ax.set_ylim(0, 103)
+    ax.margins(x=0.04)
 
-    plt.xticks(
-        x,
-        stg_labels,
-        rotation=20,
-        ha="right",
+    ax.legend(
+        method_patch_handles(),
+        [cfg["display"] for cfg in METHODS],
+        loc="upper right",
+        fontsize=LEGEND_FONTSIZE,
+        ncol=2,
     )
 
-    plt.ylim(bottom=0)
-    plt.legend()
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
     plt.tight_layout()
 
     output_path = (
@@ -1338,13 +1837,8 @@ def main():
 
     print_all_results(all_stg_results)
 
-    plot_all_execution_times(
-        all_stg_results
-    )
-
-    plot_all_speedups(
-        all_stg_results
-    )
+    plot_all_execution_time_split(all_stg_results)
+    plot_all_speedup_split(all_stg_results)
 
     # ========================================================
     # PHASE 2
@@ -1361,6 +1855,11 @@ def main():
 
     plot_all_sm_active(
         all_sm_results
+    )
+
+    plot_execution_time_vs_sm_active(
+        all_stg_results,
+        all_sm_results,
     )
 
     mixed_stg_key = "sample_mixed_chain_parallel"
@@ -1436,6 +1935,9 @@ def main():
     )
     print(
         "  all_stg_speedup_comparison.png"
+    )
+    print(
+        "  all_stg_execution_time_sm_active_comparison.png"
     )
     print(
         "  all_stg_sm_active_comparison.png"

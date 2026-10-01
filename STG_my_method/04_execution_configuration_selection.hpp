@@ -7,24 +7,21 @@
 #include <vector>
 
 #include "00_pipeline_configuration.hpp"
-#include "02_task_importance.hpp"
 #include "03_stream_assignment.hpp"
 
 /*
  * Stage 4: 予測makespanが最小の実行構成を選択する。
  *
  * SM配分候補そのものは00_pipeline_configuration.hppで定義する。
- * Stage 4は、Stage 2・3で評価済みの候補を比較するだけにする。
+ * Stage 4は、Stage 3で評価済みの候補を比較するだけにする。
  */
 struct SmAllocationCandidate {
   std::vector<int> sm_counts;
-  TaskImportanceResult importance;
   StreamScheduleResult schedule;
 };
 
 struct SmAllocationDecision {
   std::vector<int> sm_counts;
-  TaskImportanceResult importance;
   StreamScheduleResult schedule;
   double estimated_makespan = std::numeric_limits<double>::max();
 };
@@ -41,9 +38,9 @@ inline void validate_sm_allocation_candidate(
     );
   }
 
-  if (candidate.importance.stream_sm_counts != candidate.sm_counts) {
+  if (candidate.schedule.stream_sm_counts != candidate.sm_counts) {
     throw std::invalid_argument(
-        "candidate importance and SM allocation do not match"
+        "candidate schedule and SM allocation do not match"
     );
   }
 }
@@ -132,7 +129,6 @@ inline SmAllocationDecision compare_sm_allocation_candidates(
 
   return {
       best.sm_counts,
-      best.importance,
       best.schedule,
       best.schedule.makespan
   };

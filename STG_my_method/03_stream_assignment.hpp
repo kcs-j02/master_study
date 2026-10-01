@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -20,7 +21,7 @@
  * 予測完了時刻が最小のStreamへ配置する。
  * ================================================================
  *
- * ready-listから予測bottom level最大のタスクを選択する。
+ * ready-listからbottom level最大のタスクを選択する。
  *
  * 各Streamについて
  *
@@ -32,11 +33,9 @@
  * を計算する。
  *
  *
- * predicted_proc_timeにはStage 2と同じ
- *
- *   estimate_task_proc_time_on_stream()
- *
- * を使用する。
+ * Stream配置用のpredicted_proc_timeには
+ * estimate_task_proc_time_on_stream()を使用し、
+ * ここでのみSM数を反映する。
  *
  *
  * そのため、
@@ -51,6 +50,9 @@
  */
 
 struct StreamScheduleResult {
+  std::vector<int>
+      stream_sm_counts;
+
   std::unordered_map<
       int,
       int
@@ -213,24 +215,8 @@ validate_importance_result(
         importance.bottom_levels.end()
     ) {
       throw std::invalid_argument(
-          "predicted bottom level not found for task: " +
-          std::to_string(task.id)
-      );
-    }
-
-
-    /*
-     * 代表予測時間
-     */
-    if (
-        importance.predicted_proc_times.find(
-            task.id
-        ) ==
-        importance.predicted_proc_times.end()
-    ) {
-      throw std::invalid_argument(
-          "predicted processing time not found for task: " +
-          std::to_string(task.id)
+        "bottom level not found for task: " +
+        std::to_string(task.id)
       );
     }
 
@@ -273,29 +259,6 @@ validate_importance_result(
         );
       }
     }
-  }
-}
-
-
-/*
- * ================================================================
- * Stage 2とStage 3のSM配分が同じか確認
- * ================================================================
- */
-inline void
-validate_same_sm_allocation(
-    const TaskImportanceResult& importance,
-
-    const std::vector<int>&
-        stream_sm_counts
-) {
-  if (
-      importance.stream_sm_counts !=
-      stream_sm_counts
-  ) {
-    throw std::invalid_argument(
-        "Stage 2 and Stage 3 use different SM allocations"
-    );
   }
 }
 
@@ -363,14 +326,13 @@ get_predecessor_ready_time(
  *
  * 1.
  *   ready-listから
- *   予測bottom level最大のタスクを選択
+ *   bottom level最大のタスクを選択
  *
  * 2.
  *   各StreamのESTを計算
  *
  * 3.
- *   Stage 2と同じモデルで
- *   予測実行時間を計算
+ *   StreamのSM数に応じた予測実行時間を計算
  *
  * 4.
  *   EFT = EST + predicted_proc_time
@@ -425,14 +387,6 @@ place_tasks_on_streams(
   validate_stream_sm_counts(
       stream_sm_counts
   );
-
-
-  stream_assignment_detail::
-      validate_same_sm_allocation(
-          importance,
-          stream_sm_counts
-      );
-
 
   if (
       reference_sm_count <= 0
@@ -532,6 +486,11 @@ place_tasks_on_streams(
   StreamScheduleResult result;
 
 
+  /* Stage 4で候補とスケジュールの対応を検証する。 */
+  result.stream_sm_counts =
+      stream_sm_counts;
+
+
   result.task_stream.reserve(
       tasks.size()
   );
@@ -566,11 +525,11 @@ place_tasks_on_streams(
     /*
      * ----------------------------------------------------------
      * ready-listから
-     * 予測bottom level最大のタスクを選ぶ。
+     * bottom level最大のタスクを選ぶ。
      *
      * 同値なら
      *
-     *   代表予測実行時間
+     *   proc_time
      *   ↓
      *   task ID
      *
@@ -636,25 +595,28 @@ place_tasks_on_streams(
               selected_bl
           ) <= epsilon
       ) {
-        const double current_time =
-            importance.predicted_proc_times.at(
-                current_id
+        const std::int64_t current_time =
+            get_task_proc_time(
+                *task_by_id.at(
+                    current_id
+                )
             );
 
 
-        const double selected_time =
-            importance.predicted_proc_times.at(
-                selected_id
+        const std::int64_t selected_time =
+            get_task_proc_time(
+                *task_by_id.at(
+                    selected_id
+                )
             );
 
 
         /*
-         * 代表予測時間が長い方
+         * proc_timeが長い方
          */
         if (
             current_time >
-            selected_time +
-                epsilon
+            selected_time
         ) {
           select_current =
               true;
@@ -665,10 +627,8 @@ place_tasks_on_streams(
          * それも同じならID順
          */
         else if (
-            std::abs(
-                current_time -
-                selected_time
-            ) <= epsilon &&
+            current_time ==
+                selected_time &&
 
             current_id <
                 selected_id
@@ -756,9 +716,7 @@ place_tasks_on_streams(
 
       /*
        * ========================================================
-       * 予測実行時間
-       *
-       * Stage 2と同じモデル
+       * SM数に応じた予測実行時間
        * ========================================================
        */
       const double predicted_proc_time =

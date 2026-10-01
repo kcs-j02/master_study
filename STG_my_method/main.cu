@@ -44,6 +44,40 @@ void print_stg_summary(const std::vector<TaskSpec>& tasks) {
       << "task_SM_limit : " << kTaskParallelSmLimit << " SM\n";
 }
 
+void print_task_importance(
+    const std::vector<TaskSpec>& tasks,
+    const TaskImportanceResult& importance
+) {
+  const std::streamsize previous_precision =
+      std::cout.precision();
+
+  std::cout << std::setprecision(
+      std::numeric_limits<double>::max_digits10
+  );
+
+  std::cout << "\n===== Task importance =====\n";
+
+  for (const auto& task : tasks) {
+    const auto importance_it =
+        importance.bottom_levels.find(task.id);
+
+    if (importance_it == importance.bottom_levels.end()) {
+      throw std::runtime_error(
+          "bottom level not found for task: " +
+          std::to_string(task.id)
+      );
+    }
+
+    std::cout
+        << "task " << task.id
+        << " : importance=" << importance_it->second
+        << '\n';
+  }
+
+  std::cout << "===========================\n";
+  std::cout.precision(previous_precision);
+}
+
 void print_stream_candidate_comparison(
     const std::vector<SmAllocationCandidate>& all_candidates,
     const std::vector<SmAllocationCandidate>& best_per_stream_count,
@@ -271,6 +305,20 @@ BenchResult run_pipeline(const std::string& stg_path) {
 
   print_stg_summary(analysis.tasks);
 
+  /* Stage 2: proc_timeと後続タスクから重要度を1回だけ計算 */
+  TaskImportanceResult importance;
+  {
+    ScopedTimer timer(benchmark.task_importance_ms);
+    importance = evaluate_task_importance(
+        analysis.tasks
+    );
+  }
+
+  print_task_importance(
+      analysis.tasks,
+      importance
+  );
+
   /*
    * SM配分候補は00_pipeline_configuration.hppで定義済み。
    * Stage 1で得た最大並列幅から、評価するStream数の上限だけ決める。
@@ -303,25 +351,11 @@ BenchResult run_pipeline(const std::string& stg_path) {
     }
   }
 
-  /*
-   * 各SM配分候補についてStage 2 -> Stage 3を個別に実行する。
-   */
+  /* 各SM配分候補についてStage 3を実行する。 */
   std::vector<SmAllocationCandidate> all_candidates;
   all_candidates.reserve(sm_count_candidates.size());
 
   for (const auto& sm_counts : sm_count_candidates) {
-    TaskImportanceResult importance;
-
-    /* Stage 2: SM配分を考慮した予測bottom level */
-    {
-      ScopedTimer timer(benchmark.task_importance_ms);
-      importance = evaluate_task_importance(
-          analysis.tasks,
-          sm_counts,
-          kSchedulingReferenceSmCount
-      );
-    }
-
     StreamScheduleResult schedule;
 
     /* Stage 3: 予測完了時刻が最小のStreamへ配置 */
@@ -338,7 +372,6 @@ BenchResult run_pipeline(const std::string& stg_path) {
     all_candidates.push_back(
         SmAllocationCandidate{
             sm_counts,
-            std::move(importance),
             std::move(schedule)
         }
     );

@@ -50,9 +50,9 @@
 候補の評価，実行構成の選択，GPU実行を行う．
 
 1. **STGを解析**：STGファイルを読み込み，記録された処理時間を予測実行時間としてタスク仕様へ変換し，DFGの構築とレベル化を行う．
-2. **重要度を判定**：SM配分候補ごとに各Stream上の予測処理時間を求め，その平均を代表予測時間として，タスクから出口タスクまでの予測bottom levelを算出する．
-3. **Streamへ配置**：全先行タスクが配置済みのready集合から予測bottom levelが大きいタスクを選び，各StreamのSM数と空き区間を考慮して予測完了時刻が最小となるStreamへ配置する．
-4. **実行構成を選択**：Stage 2・3で評価した候補を検証し，まずStream数ごとの最良候補を残す．その後，全候補から予測makespanが最小の実行構成を選び，同値の場合はStream数が少ない構成を優先する．既定では，最大レベル幅とStream数上限から求めた範囲内にある固定表の全候補を評価する．
+2. **重要度を判定**：SM配分とは独立に，各タスクの処理時間と出口タスクまでの最長後続経路の処理時間和からbottom levelを1回だけ算出する．
+3. **Streamへ配置**：各SM配分候補について，全先行タスクが配置済みのready集合からbottom levelが大きいタスクを選び，各StreamのSM数に応じた予測処理時間と空き区間を考慮して，予測完了時刻が最小となるStreamへ配置する．
+4. **実行構成を選択**：Stage 3で評価した候補を検証し，まずStream数ごとの最良候補を残す．その後，全候補から予測makespanが最小の実行構成を選び，同値の場合はStream数が少ない構成を優先する．既定では，最大レベル幅とStream数上限から求めた範囲内にある固定表の全候補を評価する．
 5. **GPU上で実行**：Stream 0をprimary context上の通常Stream，Stream 1以降をGreen Context上のStreamとして作成し，TaskflowとCUDA Eventで依存関係を保って実行する．Green Context側の処理完了後はContextを解放し，SMをprimary context側で再利用できる状態に戻す．
 
 ## 使用技術
@@ -121,9 +121,9 @@ Baseline実装．
 - `main.cu`：設定を読み取り，Stage 1からStage 5までを順に呼び出す実行本体
 - `00_pipeline_configuration.hpp`：全Stageで共有する定数，実行オプションと環境変数の読込み，SM配分候補の定義・生成・検証
 - `01_stg_analysis.hpp`：STG読込み，予測実行時間を含むタスク仕様への変換，DFG構築，レベル化
-- `02_task_importance.hpp`：候補のSM配分を考慮した予測処理時間と予測bottom levelの算出
-- `03_stream_assignment.hpp`：ready-list schedulingと予測完了時刻に基づくStream配置
-- `04_execution_configuration_selection.hpp`：Stage 2・3で評価済みの候補を検証し，Stream数ごとの最良候補と予測makespan最小の実行構成を選択
+- `02_task_importance.hpp`：SM配分に依存しないタスク処理時間と後続経路に基づくbottom levelの算出
+- `03_stream_assignment.hpp`：bottom levelによるready-list schedulingとSM別予測処理時間・予測完了時刻に基づくStream配置
+- `04_execution_configuration_selection.hpp`：Stage 3で評価済みの候補を検証し，Stream数ごとの最良候補と予測makespan最小の実行構成を選択
 - `05_green_context_execution.cuh`：CUDA StreamとGreen Contextの作成，TaskflowによるGPU実行，完了後の資源解放
 - `bench_timer.hpp`：各StageおよびGPU実行時間の計測
 
@@ -146,7 +146,7 @@ Baseline実装．
    Existingと同じStream割当てを用い，割当て後にCUDA Green ContextでSMをほぼ均等に分割する．
 
 4. **Proposed**  
-   予測bottom levelに基づくStream割当てをSM配分候補ごとに行い，予測makespanが最小の実行構成を選択する．複数Stream構成では，Stream 0へ多くのSMを残す非対称な固定SM配分を候補として用いる．
+   SM配分に依存しないbottom levelを1回算出し，その重要度とSM別予測処理時間に基づくStream割当てをSM配分候補ごとに行い，予測makespanが最小の実行構成を選択する．複数Stream構成では，Stream 0へ多くのSMを残す非対称な固定SM配分を候補として用いる．
 
 ## 評価用STG
 
@@ -225,12 +225,18 @@ chmod +x run_batch_stgs.sh
 
 提案手法の`main`を直接実行すると，終了時にStage 1からStage 5までの
 実測時間を秒単位（小数点以下9桁）で表示する．
+また，Stage 2の計算後に各タスクの重要度（bottom level）を表示する．
 
 ```bash
 ./main ../sample_mixed_chain_parallel.stg
 ```
 
 ```text
+===== Task importance =====
+task 0 : importance=...
+task 1 : importance=...
+===========================
+
 stage_1_stg_analysis_seconds: ... s
 stage_2_task_importance_seconds: ... s
 stage_3_stream_placement_seconds: ... s
@@ -293,6 +299,7 @@ Speedupが1より大きい場合，Baselineより高速である．
 * `comparison_figures/sample_mixed_chain_parallel_speedup.png`
 * `comparison_figures/all_stg_execution_time_comparison.png`
 * `comparison_figures/all_stg_speedup_comparison.png`
+* `comparison_figures/all_stg_execution_time_sm_active_comparison.png`
 * `comparison_figures/all_method_comparison_figures.pdf`：全生成図をまとめた複数ページPDF
 
 同じコマンドを再実行すると，同名のPNGとPDFを最新結果で上書きする．
@@ -336,7 +343,11 @@ GPU処理開始から終了までの区間について平均値を求め，各�
 
 ```text
 comparison_figures/all_stg_sm_active_comparison.png
+comparison_figures/all_stg_execution_time_sm_active_comparison.png
 ```
+
+後者はSTGごとに「GPU Submit Wait Time」と「Average SMs Active」の
+散布図・線形回帰線・Pearson相関係数を表示する．
 
 ## 評価指標
 
@@ -446,7 +457,8 @@ Stream数  SM配分候補 [Stream 0, Stream 1, ...]
 5           [82, 8, 8, 8, 8]
 ```
 
-各候補についてStage 2の予測bottom levelとStage 3のStream配置を計算する．
+Stage 2では，SM配分候補に依存しないbottom levelを全候補に共通の重要度として1回だけ計算する．
+その後，各候補についてStage 3のStream配置を計算する．
 Stage 4では，同じStream数に複数候補がある場合に最小makespanの候補を残し，
 さらに全Stream数の候補から最小makespanの実行構成を選択する．
 
@@ -484,21 +496,30 @@ a = U mod K
 割り当てると，均等寄りの固定候補と同じ数値になる．Stream 0の82 SMは
 コード上の固定値であり，数値上は114 SMからGC側の32 SMを引いた残余に対応する．
 
-各候補のSM数はタスク割当て前に決まり，タスク $i$ をStream $s$ で実行する場合の
+Stage 2では，SM数を考慮せず，タスク $i$ の処理時間 $p_i$ と後続タスクの
+bottom levelから重要度 $BL(i)$ を次式で計算する．後続タスクがない場合の
+最大値は0とする．この計算はSM配分候補の評価前に1回だけ行う．
+
+```text
+BL(i) = p_i + max(BL(j)),  j in succ(i)
+```
+
+Stage 3では，各候補のSM数をタスク $i$ をStream $s$ で実行する場合の
 予測処理時間 $\hat{p}_{i,s}$ に反映する．
 
 ```text
-p_hat(i,s) = p_i * min(M_ref, L_i) / min(M_s, L_i)
+p_hat(i,s) = p_i * min(M_proc, L_i)
+                   / min(M_s, M_gpu, L_i, M_proc)
 ```
 
 - $p_i$：STGに記載されたタスク $i$ の処理時間
-- $M_{ref}$：基準SM数（114）
 - $M_s$：Stream $s$ に配分したSM数
-- $L_i$：タスク $i$ が並列に利用できるSM数の上限（本実装では64）
+- $M_{gpu}$：GPU側で利用可能なSM数の上限（114）
+- $M_{proc}$：proc_timeを取得した基準SM数（64）
+- $L_i$：タスク $i$ 自身が並列に利用できるSM数の上限（本実装では114）
 
-Stage 2では，候補に含まれる全Stream上の予測処理時間の平均をタスクの代表予測時間とし，
-その値から予測bottom levelを計算する．Stage 3では，上式のStream別予測処理時間を
-使って配置先を決める．
+Stage 2のbottom levelは上式のStream別予測処理時間を使用せず，全候補で共通となる．
+Stage 3だけがStream別予測処理時間を使って配置先と予測makespanを求める．
 
 `STG_KERNEL_AWARE_COST`を指定した評価では，$p_i$ の代わりに実際のカーネル反復回数に基づく次の重みを使用する．
 
@@ -509,8 +530,8 @@ p_i = work_units_i      (LIGHT)
 
 例えば，82 SMと114 SMのStreamはどちらも実効SM数が64であるため，予測処理時間は $p_i$ となる．一方，16 SMのStreamでは $4p_i$，8 SMのStreamでは $8p_i$ と見積もる．
 
-ready集合からは予測bottom levelが大きいタスクを先に選ぶ．配置先は予測完了時刻，
-予測開始時刻，Stream IDの順で比較して決める．Stream 0を明示的に優先する規則はないが，
+ready集合からはStage 2で算出したbottom levelが大きいタスクを先に選ぶ．配置先は予測完了時刻，
+予測開始時刻，SM数が小さいStream，Stream IDの順で比較して決める．Stream 0を明示的に優先する規則はないが，
 固定候補ではStream 0のSM数が多く予測処理時間が短いため，結果として選ばれやすくなる．
 
 #### Streamの重要度と処理量からSM数を決定する（拡張設計）
@@ -631,6 +652,7 @@ comparison_figures/all_method_comparison_figures.pdf
 comparison_figures/all_stg_execution_time_comparison.png
 comparison_figures/all_stg_speedup_comparison.png
 comparison_figures/all_stg_sm_active_comparison.png
+comparison_figures/all_stg_execution_time_sm_active_comparison.png
 ```
 
 ### STGごとの比較

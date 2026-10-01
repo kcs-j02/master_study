@@ -24,6 +24,18 @@ sm_util_pct = []
 sequential_ms = None
 
 
+def parse_float_or_none(value):
+    if value is None:
+        return None
+
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    return float(value)
+
+
 with open(data_file) as f:
     reader = csv.DictReader(f)
 
@@ -38,14 +50,12 @@ with open(data_file) as f:
         gpu_ms.append(float(row['gpu_kernel_ms']))
         total_sm.append(float(row['total_allocated_sm']))
 
-        sm_util_pct.append(
-            float(
-                row.get(
-                    'sm_utilization_pct',
-                    100.0 * float(row['total_allocated_sm']) / 114.0
-                )
-            )
-        )
+        sm_util_value = parse_float_or_none(row.get('sm_utilization_pct'))
+
+        if sm_util_value is None:
+            sm_util_value = 100.0 * float(row['total_allocated_sm']) / 114.0
+
+        sm_util_pct.append(sm_util_value)
 
         per_stream.append([
             int(row['sm_stream0']),
@@ -74,18 +84,36 @@ relative_time = [
     for value in gpu_ms
 ]
 
+speedup = [
+    sequential_ms / value if value != 0 else 0.0
+    for value in gpu_ms
+]
+
 
 # ============================================================
 # Plot 1
-# Relative execution time
+# Speedup and execution time
 # ============================================================
 
 fig, ax = plt.subplots(figsize=(13, 8))
 
-bars = ax.bar(
-    x,
-    relative_time,
-    color=colors[:len(methods)]
+ax_time = ax.twinx()
+
+speedup_bars = ax.bar(
+    x - 0.2,
+    speedup,
+    width=0.4,
+    color=colors[:len(methods)],
+    label='Speedup'
+)
+
+time_bars = ax_time.bar(
+    x + 0.2,
+    gpu_ms,
+    width=0.4,
+    color='#8c8c8c',
+    alpha=0.35,
+    label='Execution Time (ms)'
 )
 
 ax.set_xticks(x)
@@ -95,12 +123,17 @@ ax.set_xticklabels(
 )
 
 ax.set_ylabel(
-    'Relative Time\n(Sequential = 1.0)',
+    'Speedup\n(Sequential / Method)',
+    fontsize=30
+)
+
+ax_time.set_ylabel(
+    'Execution Time (ms)',
     fontsize=30
 )
 
 ax.set_title(
-    'Relative Execution Time by Method',
+    'Speedup and Execution Time by Method',
     fontsize=32
 )
 
@@ -110,8 +143,8 @@ ax.tick_params(
 )
 
 for b, value, raw_ms in zip(
-    bars,
-    relative_time,
+    speedup_bars,
+    speedup,
     gpu_ms
 ):
     ax.text(
@@ -124,10 +157,43 @@ for b, value, raw_ms in zip(
         fontweight='bold'
     )
 
+for b, value in zip(
+    time_bars,
+    gpu_ms
+):
+    ax_time.text(
+        b.get_x() + b.get_width() / 2,
+        b.get_height() * 1.02,
+        f'{value:.2f} ms',
+        ha='center',
+        va='bottom',
+        fontsize=20,
+        fontweight='bold',
+        color='#555555'
+    )
+
+ax.set_ylim(
+    0,
+    max(speedup) * 1.25 if speedup else 1.0
+)
+
+ax_time.set_ylim(
+    0,
+    max(gpu_ms) * 1.25 if gpu_ms else 1.0
+)
+
+ax.legend(
+    loc='upper left'
+)
+
+ax_time.legend(
+    loc='upper right'
+)
+
 fig.tight_layout()
 
 plt.savefig(
-    'compare_gpu_time.png',
+    'compare_speedup_time.png',
     dpi=200,
     bbox_inches='tight'
 )
@@ -292,7 +358,7 @@ plt.close()
 
 
 print(
-    'Saved compare_gpu_time.png, '
+    'Saved compare_speedup_time.png, '
     'compare_total_sm.png, '
     'compare_per_stream_sm.png'
 )
