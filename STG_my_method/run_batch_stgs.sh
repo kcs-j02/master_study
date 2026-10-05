@@ -98,6 +98,7 @@ measure_average() {
 
     if [ "$method_name" = "Proposed" ]; then
       if ! STG_DISABLE_STREAM_PLOT=1 \
+        STG_PRINT_STREAM_PROCESSING_TIMES=1 \
         "$executable" "$stg" > "$logfile" 2>&1; then
         echo \
           "[$method_name] execution failed: $executable $stg" \
@@ -155,6 +156,7 @@ measure_average() {
         fi
         stage_values[$stage_index]="$stage_value"
       done
+
     fi
 
     rm -f "$logfile"
@@ -316,6 +318,37 @@ PY
   echo "$sm_utilization"
 }
 
+print_stream_count_loads_and_actual_makespan() {
+  local csv_file="$1"
+  local actual_makespan_ms="$2"
+
+  awk \
+    -F',' \
+    -v actual_makespan_ms="$actual_makespan_ms" \
+    -v measured_runs="$((RUNS - WARMUP_RUNS))" \
+     'BEGIN {
+       print "===== Processing times for each stream count ====="
+       print "Task time = raw proc_time * measured block-pass multiplier"
+       print "Initial SM: 1=114, 2=56, 3=32, 4=24, 5=16"
+     }
+     NR > 1 {
+       if ($1 != current_stream_count) {
+         current_stream_count = $1
+         selected_label = ($15 == 1) ? "  <-- SELECTED" : ""
+         printf "Stream count=%s%s\n", $1, selected_label
+       }
+       printf "  stream %s : initial_optimum_SM=%s, after_stream0_plus_2_SM=%s, final_SM=%s, tasks=%s, raw_proc_sum=%s, before=%s, first_stage_time=%s, second_stage_time=%s\n", \
+         $2, $3, $4, $5, $6, $8, $9, $10, $11
+     }
+     END {
+       printf "Actual makespan: %s ms (GPU submit + wait, average of %d runs)\n", \
+         actual_makespan_ms, measured_runs
+       print "=================================================="
+     }' \
+    "$csv_file" \
+    >&2
+}
+
 echo
 echo "================================================================================================================================"
 echo " Proposed Method Evaluation"
@@ -364,6 +397,16 @@ for stg in "${STGS[@]}"; do
 
   stream_csv="$PROPOSED_DIR/stream_plots/${name}_stream_makespan.csv"
   stream_png="$PROPOSED_DIR/stream_plots/${name}_stream_makespan.png"
+  processing_csv="$PROPOSED_DIR/stream_plots/${name}_stream_count_processing_times.csv"
+  processing_png="$PROPOSED_DIR/stream_plots/${name}_stream_count_processing_times.png"
+
+  if [ -f "$processing_csv" ]; then
+    print_stream_count_loads_and_actual_makespan \
+      "$processing_csv" \
+      "$proposed_time"
+  else
+    echo "[Stream processing times] CSV not found: $processing_csv" >&2
+  fi
 
   if [ -f "$stream_csv" ]; then
     python3 "$PROPOSED_DIR/plot_stream_makespan.py" \
@@ -373,6 +416,21 @@ for stg in "${STGS[@]}"; do
   else
     echo "[Stream graph] CSV not found: $stream_csv" >&2
   fi
+
+  if [ -f "$processing_csv" ]; then
+    python3 "$PROPOSED_DIR/plot_selected_stream_processing_times.py" \
+      "$processing_csv" \
+      "$processing_png" \
+      "$proposed_time"
+    echo "[Stream-count processing-time graph] $processing_png" >&2
+  else
+    echo \
+      "[Stream-count processing-time graph] CSV not found: $processing_csv" \
+      >&2
+  fi
+
+  # CSVはグラフ生成と端末表示のためだけの中間ファイルとして扱う。
+  rm -f -- "$stream_csv" "$processing_csv"
 
   speedup=$(
     awk \

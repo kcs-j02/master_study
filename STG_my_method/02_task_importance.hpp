@@ -155,20 +155,9 @@ get_task_proc_time(
  *   通常114。
  *
  *
- * proc_timeの基準はreference_sm_countではなく
- *
- *   kProcTimeReferenceSmCount = 64
- *
- * とする。
- *
- *
- * したがって、
- *
- *   GPU全体SM数       = 114
- *   タスク最大SM数     = 114
- *   proc_time基準SM数  = 64
- *
- * を別々に扱う。
+ * proc_timeの基準と1タスクのSM上限は実測に基づき64 SMとする。
+ * 64 SM未満では実行カーネルと同じblock/thread構成から、1 threadが
+ * 担当する要素数（処理pass数）を求める。
  */
 inline double
 estimate_task_proc_time_on_stream(
@@ -234,10 +223,7 @@ estimate_task_proc_time_on_stream(
    * proc_time基準側の有効SM数
    * ------------------------------------------------------------
    *
-   * 通常:
-   *
-   *   min(64, 114)
-   *   = 64
+   * 通常は64 SM。
    */
   const int base_effective_sm =
       std::min(
@@ -256,17 +242,8 @@ estimate_task_proc_time_on_stream(
    *   stream_sm_count
    *   GPU全体SM数
    *   タスクSM上限
-   *   proc_time基準SM数
    *
-   *
-   * 最後に64を含めることで、
-   *
-   *   64
-   *   82
-   *   90
-   *   114
-   *
-   * は予測上すべて64 SM相当として扱う。
+   * Streamに割り当てたSM数に応じて実行時間を補正する。
    */
   const int stream_effective_sm =
       std::max(
@@ -274,25 +251,37 @@ estimate_task_proc_time_on_stream(
           std::min({
               stream_sm_count,
               reference_sm_count,
-              task_sm_limit,
-              kProcTimeReferenceSmCount
+              task_sm_limit
           })
       );
 
 
-  /*
-   * ------------------------------------------------------------
-   * 予測実行時間
-   * ------------------------------------------------------------
-   */
+  /* 実行カーネルと同じgrid/thread構成から相対pass数を求める。 */
+  const auto calculate_pass_count = [](int effective_sm) {
+    constexpr int warp_size = 32;
+    constexpr int maximum_threads_per_block = 256;
+
+    const int elements_per_block =
+        (kTaskElementCount + effective_sm - 1) / effective_sm;
+    const int warp_aligned_threads =
+        ((elements_per_block + warp_size - 1) / warp_size) * warp_size;
+    const int threads_per_block = std::max(
+        warp_size,
+        std::min(maximum_threads_per_block, warp_aligned_threads)
+    );
+
+    return
+        (elements_per_block + threads_per_block - 1) /
+        threads_per_block;
+  };
+
+  const int base_pass_count = calculate_pass_count(base_effective_sm);
+  const int stream_pass_count = calculate_pass_count(stream_effective_sm);
+
   return
       base_proc_time *
-      static_cast<double>(
-          base_effective_sm
-      ) /
-      static_cast<double>(
-          stream_effective_sm
-      );
+      static_cast<double>(stream_pass_count) /
+      static_cast<double>(base_pass_count);
 }
 
 

@@ -38,7 +38,7 @@ def main() -> int:
             )
 
             labels.append(
-                f"{stream_count}\n{sm_counts}"
+                f"{stream_count} streams\nFinal SM: {sm_counts}"
             )
 
     if not makespans:
@@ -48,7 +48,7 @@ def main() -> int:
         )
         return 1
 
-    # 6候補をそれぞれ別のx座標に置く
+    # 1～5 Streamの最終makespanをそれぞれ別のx座標に置く。
     x_positions = list(range(len(makespans)))
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -58,6 +58,7 @@ def main() -> int:
         makespans,
         marker="o",
         linewidth=2,
+        label="Final makespan after Stage 2",
     )
 
     for x, y, selected in zip(
@@ -65,10 +66,10 @@ def main() -> int:
         makespans,
         selected_flags,
     ):
-        label = f"{y:.3f}"
+        label = f"Final: {y:.3f}"
 
         if selected:
-            label += "\nSELECTED"
+            label += "\nMINIMUM / SELECTED"
 
             ax.scatter(
                 [x],
@@ -78,27 +79,30 @@ def main() -> int:
                 zorder=5,
             )
 
+        annotation_offset = (12, 16) if selected else (0, 12)
+        horizontal_alignment = "left" if selected else "center"
+
         ax.annotate(
             label,
             (x, y),
             textcoords="offset points",
-            xytext=(0, 12),
-            ha="center",
+            xytext=annotation_offset,
+            ha=horizontal_alignment,
             fontsize=10,
         )
 
     ax.set_title(
-        "Predicted Makespan for Each Stream / SM Configuration",
+        "Final Predicted Makespan After Stage 2",
         fontsize=15,
     )
 
     ax.set_xlabel(
-        "Stream Count / SM Allocation",
+        "Stream Count / Final SM Allocation",
         fontsize=13,
     )
 
     ax.set_ylabel(
-        "Estimated Makespan",
+        "Final Estimated Makespan [relative units]",
         fontsize=13,
     )
 
@@ -116,6 +120,18 @@ def main() -> int:
     ax.grid(
         True,
         alpha=0.3,
+    )
+
+    ax.legend()
+
+    minimum_makespan = min(makespans)
+    maximum_makespan = max(makespans)
+    makespan_range = maximum_makespan - minimum_makespan
+    if makespan_range <= 0.0:
+        makespan_range = max(abs(maximum_makespan) * 0.1, 1.0)
+    ax.set_ylim(
+        minimum_makespan - makespan_range * 0.18,
+        maximum_makespan + makespan_range * 0.28,
     )
 
     fig.tight_layout()

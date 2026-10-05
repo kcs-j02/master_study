@@ -32,30 +32,23 @@ inline constexpr int kMaximumConfiguredStreamCount = 5;
 /*
  * 1タスクに許可する最大SM数。
  *
- * GC解放後に最大114 SMまで利用できるようにする。
+ * 実測では64 SM以上でLIGHT/HEAVYとも処理時間がほぼ変わらないため、
+ * 1タスクのgrid block数を64に制限する。
  */
-inline constexpr int kTaskParallelSmLimit = 114;
+inline constexpr int kTaskParallelSmLimit = 64;
 
 /*
  * proc_timeを取得した基準SM数。
  *
- * proc_timeは64 SM相当を基準とする。
- *
- * Stage 3の予測では、
- * 現在のkernelについて64 SMを超えた領域で
- * 理想的な速度向上を仮定しない。
+ * proc_timeは、実測で性能が飽和した64 SM相当を基準とする。
+ * 64 SM未満の倍率は実行時と同じblock/thread構成から求める。
  */
 inline constexpr int kProcTimeReferenceSmCount = 64;
 
 /*
  * タスクの問題サイズ。
  *
- * kTaskParallelSmLimitを114へ変更しても、
- * タスクそのものの仕事量は従来と同じ
- *
- *   64 * 256
- *
- * のまま固定する。
+ * 実測対象と同じ64 blocks * 256 elements相当の仕事量を使用する。
  */
 inline constexpr int kTaskElementCount = 64 * 256;
 
@@ -129,23 +122,30 @@ make_stream_sm_count_candidates(
 
     case 2:
       return {
-          {82, 32}
+          /*
+           * 112 SMを56/56で初期配分する。
+           * 分割粒度に含まれない残り2 SMはprimary context
+           * (Stream 0)へ残るため、実機上は58/56となる。
+           */
+          {58, 56}
       };
 
     case 3:
       return {
-          {82, 16, 16},
-          {82, 24, 8}
+          /* 初期32ずつ。追加16 SMも探索対象、端数2 SMはStream 0。 */
+          {42, 40, 32}
       };
 
     case 4:
       return {
-          {82, 16, 8, 8}
+          /* 初期24ずつ。追加16 SMも探索対象、端数2 SMはStream 0。 */
+          {34, 32, 24, 24}
       };
 
     case 5:
       return {
-          {82, 8, 8, 8, 8}
+          /* 初期16ずつ。追加32 SMも探索対象、端数2 SMはStream 0。 */
+          {26, 24, 24, 24, 16}
       };
 
     default:
