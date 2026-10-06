@@ -76,14 +76,14 @@ measure_average() {
     "stage_1_stg_analysis_seconds"
     "stage_2_task_importance_seconds"
     "stage_3_stream_placement_seconds"
-    "stage_4_sm_allocation_comparison_seconds"
+    "stage_4_sm_allocation_seconds"
     "stage_5_green_context_execution_seconds"
   )
   local -a stage_labels=(
     "Stage 1 - STG analysis"
     "Stage 2 - Task importance"
     "Stage 3 - Stream placement"
-    "Stage 4 - SM allocation comparison"
+    "Stage 4 - SM allocation"
     "Stage 5 - Green Context execution"
   )
   local -a stage_sums=("0" "0" "0" "0" "0")

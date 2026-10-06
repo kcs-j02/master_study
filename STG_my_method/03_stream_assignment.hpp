@@ -33,14 +33,14 @@
  * を計算する。
  *
  *
- * タスク配置ではSM数を使用しない。配置を確定した後、その配置を
- * 固定したまま割当SM数を反映した予測makespanを再計算する。
+ * Stage 3ではSM数を使用せず、タスクをどのStreamへ配置するかだけを
+ * 決定する。SM配分とSM数を反映した評価はStage 4で行う。
  * ================================================================
  */
 
 struct StreamScheduleResult {
-  std::vector<int>
-      stream_sm_counts;
+  int stream_count =
+      0;
 
   std::unordered_map<
       int,
@@ -310,157 +310,6 @@ get_predecessor_ready_time(
 
 /*
  * ================================================================
- * 固定済みのタスク配置にSM数を反映してmakespanを再計算する
- * ================================================================
- *
- * task_streamと各Stream内のタスク順序は変更しない。
- * STG依存関係とStream内直列実行を制約として、割当SM数で補正した
- * タスク処理時間から最早開始・終了時刻を求める。
- */
-inline double estimate_fixed_assignment_makespan(
-    const std::vector<TaskSpec>& tasks,
-    const std::vector<int>& stream_sm_counts,
-    const StreamScheduleResult& placement,
-    int reference_sm_count = kSchedulingReferenceSmCount
-) {
-  const auto task_by_id = make_task_table(tasks);
-  const int stream_count =
-      static_cast<int>(stream_sm_counts.size());
-
-  std::vector<std::vector<int>> stream_task_ids(
-      static_cast<std::size_t>(stream_count)
-  );
-
-  for (const auto& task : tasks) {
-    const int stream_id = placement.task_stream.at(task.id);
-    stream_task_ids.at(static_cast<std::size_t>(stream_id)).push_back(
-        task.id
-    );
-  }
-
-  for (auto& task_ids : stream_task_ids) {
-    std::stable_sort(
-        task_ids.begin(),
-        task_ids.end(),
-        [&](int left_id, int right_id) {
-          const double left_start =
-              placement.task_start_time.at(left_id);
-          const double right_start =
-              placement.task_start_time.at(right_id);
-
-          if (left_start != right_start) {
-            return left_start < right_start;
-          }
-
-          const double left_finish =
-              placement.task_finish_time.at(left_id);
-          const double right_finish =
-              placement.task_finish_time.at(right_id);
-
-          if (left_finish != right_finish) {
-            return left_finish < right_finish;
-          }
-
-          return left_id < right_id;
-        }
-    );
-  }
-
-  std::unordered_map<int, std::vector<int>> predecessors;
-  std::unordered_map<int, std::vector<int>> successors;
-  std::unordered_map<int, int> remaining_predecessors;
-
-  for (const auto& task : tasks) {
-    predecessors.emplace(task.id, task.preds);
-    successors.emplace(task.id, std::vector<int>{});
-  }
-
-  /* 同一Stream内の実行順序を追加の依存制約として扱う。 */
-  for (const auto& task_ids : stream_task_ids) {
-    for (std::size_t index = 1; index < task_ids.size(); ++index) {
-      const int previous_id = task_ids.at(index - 1);
-      const int current_id = task_ids.at(index);
-      auto& current_predecessors = predecessors.at(current_id);
-
-      if (std::find(
-              current_predecessors.begin(),
-              current_predecessors.end(),
-              previous_id
-          ) == current_predecessors.end()) {
-        current_predecessors.push_back(previous_id);
-      }
-    }
-  }
-
-  for (const auto& task : tasks) {
-    const auto& task_predecessors = predecessors.at(task.id);
-    remaining_predecessors.emplace(
-        task.id,
-        static_cast<int>(task_predecessors.size())
-    );
-
-    for (const int predecessor_id : task_predecessors) {
-      successors.at(predecessor_id).push_back(task.id);
-    }
-  }
-
-  std::vector<int> ready_task_ids;
-  for (const auto& task : tasks) {
-    if (remaining_predecessors.at(task.id) == 0) {
-      ready_task_ids.push_back(task.id);
-    }
-  }
-
-  std::unordered_map<int, double> finish_times;
-  double makespan = 0.0;
-  std::size_t evaluated_task_count = 0;
-
-  while (!ready_task_ids.empty()) {
-    const int task_id = ready_task_ids.back();
-    ready_task_ids.pop_back();
-    const TaskSpec& task = *task_by_id.at(task_id);
-
-    double start_time = 0.0;
-    for (const int predecessor_id : predecessors.at(task_id)) {
-      start_time = std::max(
-          start_time,
-          finish_times.at(predecessor_id)
-      );
-    }
-
-    const int stream_id = placement.task_stream.at(task_id);
-    const double duration = estimate_task_proc_time_on_stream(
-        task,
-        stream_sm_counts.at(static_cast<std::size_t>(stream_id)),
-        reference_sm_count
-    );
-    const double finish_time = start_time + duration;
-
-    finish_times.emplace(task_id, finish_time);
-    makespan = std::max(makespan, finish_time);
-    ++evaluated_task_count;
-
-    for (const int successor_id : successors.at(task_id)) {
-      int& remaining = remaining_predecessors.at(successor_id);
-      --remaining;
-      if (remaining == 0) {
-        ready_task_ids.push_back(successor_id);
-      }
-    }
-  }
-
-  if (evaluated_task_count != tasks.size()) {
-    throw std::runtime_error(
-        "failed to evaluate fixed stream assignment"
-    );
-  }
-
-  return makespan;
-}
-
-
-/*
- * ================================================================
  * Stage 3本体
  * ================================================================
  *
@@ -500,11 +349,7 @@ place_tasks_on_streams(
 
     const TaskImportanceResult& importance,
 
-    const std::vector<int>&
-        stream_sm_counts,
-
-    int reference_sm_count =
-        kSchedulingReferenceSmCount
+    int stream_count
 ) {
   /*
    * ------------------------------------------------------------
@@ -520,15 +365,16 @@ place_tasks_on_streams(
   }
 
 
-  validate_stream_sm_counts(
-      stream_sm_counts
-  );
-
   if (
-      reference_sm_count <= 0
+      stream_count < 1 ||
+      stream_count >
+          kMaximumConfiguredStreamCount
   ) {
     throw std::invalid_argument(
-        "reference_sm_count must be positive"
+        "stream_count must be between 1 and " +
+        std::to_string(
+            kMaximumConfiguredStreamCount
+        )
     );
   }
 
@@ -544,12 +390,6 @@ place_tasks_on_streams(
           tasks,
           importance,
           task_by_id
-      );
-
-
-  const int stream_count =
-      static_cast<int>(
-          stream_sm_counts.size()
       );
 
 
@@ -622,9 +462,8 @@ place_tasks_on_streams(
   StreamScheduleResult result;
 
 
-  /* Stage 4で候補とスケジュールの対応を検証する。 */
-  result.stream_sm_counts =
-      stream_sm_counts;
+  result.stream_count =
+      stream_count;
 
 
   result.task_stream.reserve(
@@ -1094,19 +933,6 @@ place_tasks_on_streams(
         "dependency graph may contain a cycle"
     );
   }
-
-
-  /*
-   * タスク配置とStream内順序を固定した後でのみSM数を反映する。
-   * Stage 4はこのSM-aware makespanを使って実行構成を比較する。
-   */
-  result.makespan =
-      estimate_fixed_assignment_makespan(
-          tasks,
-          stream_sm_counts,
-          result,
-          reference_sm_count
-      );
 
 
   return result;

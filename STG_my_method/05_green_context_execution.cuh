@@ -373,7 +373,7 @@ inline void validate_green_context_sm_counts(
 
 
   /*
-   * Stage 3～4で予測したStream 0のSM数と
+   * Stage 4で決定したStream 0のSM数と
    * 実際に残るSM数を一致させる。
    */
   if (
@@ -1692,16 +1692,11 @@ static __global__ void configured_heavy_kernel(
 
 /*
  * ================================================================
- * SM数から起動block数を求める
+ * 全手法で共通の起動block数を返す
  * ================================================================
  *
- * 原則:
- *
- *   1 SMあたり1 block
- *
- * とする。
- *
- * task.parallel_sm_limitも上限として使用する。
+ * SM数の制限はGreen Contextに任せ、kernelのgrid形状は
+ * 既存手法と同じ64 blocksで固定する。
  */
 inline int calculate_grid_block_count(
     const TaskSpec& task,
@@ -1717,59 +1712,18 @@ inline int calculate_grid_block_count(
   }
 
 
-  return
-      std::max(
-          1,
+  (void)task;
 
-          std::min(
-              configured_stream_sm,
-
-              std::max(
-                  1,
-                  task.parallel_sm_limit
-              )
-          )
-      );
+  return kTaskParallelSmLimit;
 }
 
 
 /*
  * ================================================================
- * grid数に合わせてthreads/blockを計算
+ * 共通kernelのthreads/blockを計算
  * ================================================================
  *
- * 従来:
- *
- *   常に256 threads
- *
- *
- * 今回:
- *
- *   各blockが担当する要素数を求め、
- *   warp単位に切り上げる。
- *
- *
- * element_count = 16384 の場合:
- *
- * 64 blocks
- *   256 elements/block
- *   -> 256 threads
- *
- * 82 blocks
- *   約200 elements/block
- *   -> 224 threads
- *
- * 90 blocks
- *   約183 elements/block
- *   -> 192 threads
- *
- * 114 blocks
- *   約144 elements/block
- *   -> 160 threads
- *
- *
- * これにより114 blocks時に
- * 114 * 256 threadsを起動する無駄を減らす。
+ * 既存手法と同じ256 threadsで固定する。
  */
 inline int calculate_threads_per_block(
     int element_count,
@@ -1794,79 +1748,18 @@ inline int calculate_threads_per_block(
   }
 
 
-  constexpr int warp_size =
-      32;
-
-
-  constexpr int maximum_threads_per_block =
-      256;
-
-
-  const int elements_per_block =
-      (
-          element_count +
-          grid_block_count -
-          1
-      ) /
-      grid_block_count;
-
-
-  /*
-   * warp単位へ切り上げる。
-   */
-  const int warp_aligned_threads =
-      (
-          (
-              elements_per_block +
-              warp_size -
-              1
-          ) /
-          warp_size
-      ) *
-      warp_size;
-
-
-  return
-      std::max(
-          warp_size,
-
-          std::min(
-              maximum_threads_per_block,
-              warp_aligned_threads
-          )
-      );
+  return 256;
 }
 
 
 /*
  * ================================================================
- * SM数を考慮したkernel起動
+ * 全手法で共通のkernel起動
  * ================================================================
  *
- * Stream 0だけでなくGC Streamでも使用する。
- *
- *
- * 例:
- *
- * configured_stream_sm = 8
- *
- *   grid = 8
- *   threads = 256
- *
- *
- * configured_stream_sm = 82
- *
- *   grid = 82
- *   threads = 224
- *
- *
- * configured_stream_sm = 114
- *
- *   grid = 114
- *   threads = 160
- *
- *
- * 仕事量kTaskElementCountは変えない。
+ * Stream 0とGC Streamのどちらでも、常に
+ * <<<64, 256>>>相当で起動する。SM数の制限はGreen Contextが
+ * 担当し、grid形状には反映しない。
  * ================================================================
  */
 inline void launch_configured_task_kernel(
@@ -2951,30 +2844,6 @@ execute_with_green_context(
                       stream
                   )
               );
-
-
-              /*
-               * ==============================================
-               * Stream 0
-               *
-               * 次タスクを先行投入しない。
-               *
-               * GCがこのタスク実行中に解放された場合、
-               * 次のタスクは増加後のSM数で起動できる。
-               * ==============================================
-               */
-              if (
-                  !options.disable_green_context &&
-                  stream_id == 0
-              ) {
-                GC_CUDA_CHECK(
-                    cudaEventSynchronize(
-                        done_events.at(
-                            task.id
-                        )
-                    )
-                );
-              }
 
 
               /*

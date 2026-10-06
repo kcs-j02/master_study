@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -94,7 +93,7 @@ void print_stream_candidate_comparison(
     for (const auto& best : best_per_stream_count) {
       if (best.sm_counts == candidate.sm_counts &&
           std::abs(
-              best.schedule.makespan - candidate.schedule.makespan
+              best.estimated_makespan - candidate.estimated_makespan
           ) <= 1.0e-9) {
         best_for_stream_count = true;
         break;
@@ -106,7 +105,7 @@ void print_stream_candidate_comparison(
         << " SM=" << std::setw(16)
         << format_sm_counts(candidate.sm_counts)
         << " estimated_makespan="
-        << candidate.schedule.makespan;
+        << candidate.estimated_makespan;
 
     if (best_for_stream_count) {
       std::cout << "  <-- BEST FOR "
@@ -127,7 +126,7 @@ void print_stream_candidate_comparison(
         << " SM=" << std::setw(16)
         << format_sm_counts(candidate.sm_counts)
         << " estimated_makespan="
-        << candidate.schedule.makespan;
+        << candidate.estimated_makespan;
 
     if (selected) {
       std::cout << "  <-- SELECTED";
@@ -171,7 +170,7 @@ void write_stream_makespan_csv(
     output
         << candidate.sm_counts.size() << ','
         << '"' << format_sm_counts(candidate.sm_counts) << '"' << ','
-        << candidate.schedule.makespan << ','
+        << candidate.estimated_makespan << ','
         << (selected ? 1 : 0) << '\n';
   }
 
@@ -265,219 +264,6 @@ struct StreamProcessingTimeSummary {
   double proc_time_before_sm_partition = 0.0;
   double relative_load_after_sm_partition = 0.0;
 };
-
-int initial_sm_per_stream_for_count(int stream_count) {
-  switch (stream_count) {
-    case 1: return 114;
-    case 2: return 56;
-    case 3: return 32;
-    case 4: return 24;
-    case 5: return 16;
-    default:
-      throw std::invalid_argument(
-          "stream_count must be between 1 and 5"
-      );
-  }
-}
-
-double estimate_stream_processing_time_sum(
-    const std::vector<TaskSpec>& tasks,
-    const StreamScheduleResult& placement,
-    const std::vector<int>& stream_sm_counts,
-    int target_stream_id
-) {
-  double processing_time = 0.0;
-
-  for (const auto& task : tasks) {
-    const int stream_id = placement.task_stream.at(task.id);
-    if (stream_id != target_stream_id) {
-      continue;
-    }
-
-    processing_time += estimate_task_proc_time_on_stream(
-        task,
-        stream_sm_counts.at(static_cast<std::size_t>(stream_id)),
-        kSchedulingReferenceSmCount
-    );
-  }
-
-  return processing_time;
-}
-
-double estimate_stream_load_makespan(
-    const std::vector<TaskSpec>& tasks,
-    const StreamScheduleResult& placement,
-    const std::vector<int>& stream_sm_counts
-) {
-  double makespan = 0.0;
-
-  for (std::size_t stream_id = 0;
-       stream_id < stream_sm_counts.size();
-       ++stream_id) {
-    makespan = std::max(
-        makespan,
-        estimate_stream_processing_time_sum(
-            tasks,
-            placement,
-            stream_sm_counts,
-            static_cast<int>(stream_id)
-        )
-    );
-  }
-
-  return makespan;
-}
-
-struct StreamSmAllocationResult {
-  std::vector<int> initial_pool_optimized_sm_counts;
-  std::vector<int> after_stream_0_remainder_sm_counts;
-  std::vector<int> runtime_sm_counts;
-  double initial_pool_makespan = 0.0;
-  double final_makespan = 0.0;
-};
-
-StreamSmAllocationResult optimize_stream_sm_allocation(
-    const std::vector<TaskSpec>& tasks,
-    const StreamScheduleResult& placement
-) {
-  constexpr int allocation_unit_sm = 8;
-  const int stream_count =
-      static_cast<int>(placement.stream_sm_counts.size());
-  const int initial_sm_per_stream =
-      initial_sm_per_stream_for_count(stream_count);
-  const int initial_pool_sm =
-      stream_count * initial_sm_per_stream;
-  constexpr int stream_0_remainder_sm = 2;
-  const int remaining_extra_sm =
-      kSchedulingReferenceSmCount -
-      initial_pool_sm -
-      stream_0_remainder_sm;
-
-  if (stream_count < 2 || initial_pool_sm % allocation_unit_sm != 0 ||
-      remaining_extra_sm < 0 ||
-      remaining_extra_sm % allocation_unit_sm != 0) {
-    throw std::invalid_argument(
-        "invalid stream count for SM allocation optimization"
-    );
-  }
-
-  /*
-   * base_sm_countsを減らさず、追加する8 SMチャンクの全配分を探索する。
-   * 評価値は各StreamのSM補正後処理時間合計の最大値とする。
-   */
-  auto optimize_additional_chunks = [
-      &tasks,
-      &placement,
-      stream_count
-  ](
-      const std::vector<int>& base_sm_counts,
-      int additional_chunk_count
-  ) {
-    std::vector<int> best_sm_counts;
-    double best_makespan = std::numeric_limits<double>::max();
-    long long best_addition_deviation =
-        std::numeric_limits<long long>::max();
-    constexpr double epsilon = 1.0e-9;
-    std::vector<int> additions(
-        static_cast<std::size_t>(stream_count),
-        0
-    );
-
-    std::function<void(int, int)> search = [&](int stream_id,
-                                                 int remaining_chunks) {
-      if (stream_id == stream_count - 1) {
-        additions.at(static_cast<std::size_t>(stream_id)) =
-            remaining_chunks;
-
-        std::vector<int> candidate = base_sm_counts;
-        long long addition_deviation = 0;
-
-        for (int id = 0; id < stream_count; ++id) {
-          const int addition =
-              additions.at(static_cast<std::size_t>(id));
-          candidate.at(static_cast<std::size_t>(id)) +=
-              addition * allocation_unit_sm;
-          addition_deviation +=
-              static_cast<long long>(addition) * addition;
-
-        }
-
-        const double makespan =
-            estimate_stream_load_makespan(
-                tasks,
-                placement,
-                candidate
-            );
-
-        if (makespan < best_makespan - epsilon ||
-            (std::abs(makespan - best_makespan) <= epsilon &&
-             addition_deviation < best_addition_deviation)) {
-          best_sm_counts = std::move(candidate);
-          best_makespan = makespan;
-          best_addition_deviation = addition_deviation;
-        }
-        return;
-      }
-
-      for (int chunks = 0;
-           chunks <= remaining_chunks;
-           ++chunks) {
-        additions.at(static_cast<std::size_t>(stream_id)) = chunks;
-        search(stream_id + 1, remaining_chunks - chunks);
-      }
-    };
-
-    search(0, additional_chunk_count);
-
-    if (best_sm_counts.empty()) {
-      throw std::runtime_error(
-          "failed to optimize additional SM chunks"
-      );
-    }
-
-    return std::pair<std::vector<int>, double>{
-        std::move(best_sm_counts),
-        best_makespan
-    };
-  };
-
-  /* 第1段階: 初期総量だけを全探索する（各Stream最低8 SM）。 */
-  std::vector<int> minimum_sm_counts(
-      static_cast<std::size_t>(stream_count),
-      allocation_unit_sm
-  );
-  const int initial_additional_chunks =
-      initial_pool_sm / allocation_unit_sm - stream_count;
-  auto initial_optimization = optimize_additional_chunks(
-      minimum_sm_counts,
-      initial_additional_chunks
-  );
-
-  /* 第1段階の結果を固定し、Stream 0へ端数2 SMを追加する。 */
-  std::vector<int> after_stream_0_remainder =
-      initial_optimization.first;
-  after_stream_0_remainder.front() += stream_0_remainder_sm;
-
-  /* 第2段階: 残った余剰SMだけを追加する全配分を探索する。 */
-  const int remaining_extra_chunks =
-      remaining_extra_sm / allocation_unit_sm;
-  auto final_optimization = optimize_additional_chunks(
-      after_stream_0_remainder,
-      remaining_extra_chunks
-  );
-
-  StreamSmAllocationResult result;
-  result.initial_pool_optimized_sm_counts =
-      std::move(initial_optimization.first);
-  result.after_stream_0_remainder_sm_counts =
-      std::move(after_stream_0_remainder);
-  result.runtime_sm_counts =
-      std::move(final_optimization.first);
-  result.initial_pool_makespan = initial_optimization.second;
-  result.final_makespan = final_optimization.second;
-
-  return result;
-}
 
 std::vector<StreamProcessingTimeSummary>
 summarize_stream_processing_times(
@@ -657,7 +443,7 @@ void write_processing_times_for_each_stream_count_csv(
             candidate.schedule,
             initial_equal_sm_counts
         );
-    double first_stage_makespan = candidate.schedule.makespan;
+    double first_stage_makespan = candidate.estimated_makespan;
 
     if (candidate.sm_counts.size() >= 2) {
       const auto stages = optimize_stream_sm_allocation(
@@ -702,7 +488,7 @@ void write_processing_times_for_each_stream_count_csv(
           << summary.relative_load_after_sm_partition << ','
           << before_redistribution_makespan << ','
           << first_stage_makespan << ','
-          << candidate.schedule.makespan << ','
+          << candidate.estimated_makespan << ','
           << (selected ? 1 : 0) << '\n';
     }
   }
@@ -757,91 +543,73 @@ BenchResult run_pipeline(const std::string& stg_path) {
     throw std::runtime_error("no SM allocation candidates");
   }
 
-  /* GC使用時は候補が実機で実現可能か確認する。 */
-  if (!options.disable_gc) {
-    const SmPartitionInfo partition_info = query_sm_partition_info();
-    validate_fixed_sm_table_compatibility(partition_info);
+  /* Stage 3: SM数を使わず、Stream数ごとにタスクを配置する。 */
+  std::vector<StreamScheduleResult> placements;
+  placements.reserve(sm_count_candidates.size());
+
+  {
+    ScopedTimer timer(benchmark.stream_placement_ms);
 
     for (const auto& sm_counts : sm_count_candidates) {
-      validate_green_context_sm_counts(
-          sm_counts,
-          partition_info
+      const int stream_count =
+          static_cast<int>(sm_counts.size());
+
+      const auto existing = std::find_if(
+          placements.begin(),
+          placements.end(),
+          [stream_count](const StreamScheduleResult& placement) {
+            return placement.stream_count == stream_count;
+          }
+      );
+
+      if (existing != placements.end()) {
+        continue;
+      }
+
+      placements.push_back(
+          place_tasks_on_streams(
+              analysis.tasks,
+              importance,
+              stream_count
+          )
       );
     }
   }
 
-  /* 各SM配分候補についてStage 3を実行する。 */
-  std::vector<SmAllocationCandidate> all_candidates;
-  all_candidates.reserve(sm_count_candidates.size());
-
+  /* Stage 4: Stage 3の配置を固定し、SM配分を決定する。 */
   const bool optimize_default_stream_allocation =
       !options.disable_gc &&
       !options.stream_sm_counts.has_value() &&
       !options.two_stream_gc_sm.has_value();
 
-  for (const auto& sm_counts : sm_count_candidates) {
-    StreamScheduleResult schedule;
-    std::vector<int> candidate_sm_counts = sm_counts;
+  SmAllocationStageResult allocation;
 
-    /* Stage 3: 予測完了時刻が最小のStreamへ配置 */
-    {
-      ScopedTimer timer(benchmark.stream_placement_ms);
-      schedule = place_tasks_on_streams(
-          analysis.tasks,
-          importance,
-          sm_counts,
-          kSchedulingReferenceSmCount
-      );
-    }
-
-    /* SM配分評価では依存待ちを使わず、最大Stream負荷だけを使う。 */
-    schedule.makespan = estimate_stream_load_makespan(
+  {
+    ScopedTimer timer(benchmark.sm_allocation_ms);
+    allocation = allocate_sm_resources(
         analysis.tasks,
-        schedule,
-        candidate_sm_counts
-    );
-
-    if (optimize_default_stream_allocation &&
-        sm_counts.size() >= 2) {
-      const auto optimized = optimize_stream_sm_allocation(
-          analysis.tasks,
-          schedule
-      );
-
-      candidate_sm_counts = optimized.runtime_sm_counts;
-      schedule.stream_sm_counts = candidate_sm_counts;
-      schedule.makespan = optimized.final_makespan;
-
-      if (!options.disable_gc) {
-        const SmPartitionInfo partition_info = query_sm_partition_info();
-        validate_green_context_sm_counts(
-            candidate_sm_counts,
-            partition_info
-        );
-      }
-    }
-
-    all_candidates.push_back(
-        SmAllocationCandidate{
-            std::move(candidate_sm_counts),
-            std::move(schedule)
-        }
+        placements,
+        sm_count_candidates,
+        optimize_default_stream_allocation
     );
   }
 
-  /* Stage 4: 予測makespanが最小の実行構成を選択 */
-  std::vector<SmAllocationCandidate> best_per_stream_count;
-  SmAllocationDecision decision;
+  const auto& all_candidates = allocation.all_candidates;
+  const auto& best_per_stream_count =
+      allocation.best_per_stream_count;
+  const auto& decision = allocation.decision;
 
-  {
-    ScopedTimer timer(benchmark.sm_allocation_comparison_ms);
+  /* Stage 4が決めたSM配分を実機で構成できるか確認する。 */
+  if (!options.disable_gc) {
+    const SmPartitionInfo partition_info = query_sm_partition_info();
+    validate_fixed_sm_table_compatibility(partition_info);
 
-    best_per_stream_count =
-        select_best_candidate_per_stream_count(all_candidates);
-
-    decision = compare_sm_allocation_candidates(
-        best_per_stream_count
-    );
+    for (const auto& candidate : all_candidates) {
+      validate_green_context_sm_counts(
+          candidate.sm_counts,
+          partition_info
+      );
+    }
   }
 
   print_stream_candidate_comparison(

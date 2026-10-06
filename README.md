@@ -47,13 +47,177 @@
 
 提案手法では，`00_pipeline_configuration.hpp`に共通定数，実行オプション，
 およびSM配分候補をまとめる．`main.cu`はその設定を読み取り，以下の5段階で
-候補の評価，実行構成の選択，GPU実行を行う．
+タスク配置，SM配分の決定，GPU実行を行う．
 
 1. **STGを解析**：STGファイルを読み込み，記録された処理時間を予測実行時間としてタスク仕様へ変換し，DFGの構築とレベル化を行う．
-2. **重要度を判定**：SM配分とは独立に，各タスクの処理時間と出口タスクまでの最長後続経路の処理時間和からbottom levelを1回だけ算出する．
-3. **Streamへ配置**：各SM配分候補について，全先行タスクが配置済みのready集合からbottom levelが大きいタスクを選び，各StreamのSM数に応じた予測処理時間と空き区間を考慮して，予測完了時刻が最小となるStreamへ配置する．
-4. **実行構成を選択**：Stage 3で評価した候補を検証し，まずStream数ごとの最良候補を残す．その後，全候補から予測makespanが最小の実行構成を選び，同値の場合はStream数が少ない構成を優先する．既定では，最大レベル幅とStream数上限から求めた範囲内にある固定表の全候補を評価する．
+2. **各タスクの重要度を作成**：SM配分とは独立に，各タスクの処理時間と出口タスクまでの最長後続経路の処理時間和からbottom levelを1回だけ算出する．
+3. **タスクをStreamへ配置**：各Stream数について，全先行タスクが配置済みのready集合からbottom levelが大きいタスクを選び，元の処理時間とStream内の空き区間を用いて予測完了時刻が最小となるStreamへ配置する．この段階ではSM数を使用しない．
+4. **SMを配分**：Stage 3のタスク配置を固定し，各Streamのタスク処理量に対してSM数を反映した予測時間を評価する．既定の複数Stream構成ではSMを8 SM単位で探索・配分し，最終的に予測makespanが最小の構成を選択する．同値の場合はStream数が少ない構成を優先する．
 5. **GPU上で実行**：Stream 0をprimary context上の通常Stream，Stream 1以降をGreen Context上のStreamとして作成し，TaskflowとCUDA Eventで依存関係を保って実行する．Green Context側の処理完了後はContextを解放し，SMをprimary context側で再利用できる状態に戻す．
+
+### 提案手法の処理手順（00〜05）
+
+```text
+00 共通設定・SM候補
+        ↓
+01 STG解析
+        ↓
+02 各タスクの重要度作成
+        ↓
+03 タスクのStream配置
+        ↓
+04 SM配分
+        ↓
+05 GPU実行
+```
+
+#### 00．共通設定とSM候補の生成
+
+`00_pipeline_configuration.hpp`は独立した計算Stageではなく，01〜05が共通で使用する設定を準備する．GPU全体の基準SM数を114，最大Stream数を5，1タスクの並列SM上限と`proc_time`の基準SM数を64として定義する．
+
+また，`STG_MAX_STREAMS`，`STG_DISABLE_GC`，`STG_STREAM_SM_COUNTS`などの環境変数を`PipelineOptions`へ変換し，Stage 4に渡すSM候補を生成する．既定候補は`[114]`，`[58,56]`，`[42,40,32]`，`[34,32,24,24]`，`[26,24,24,24,16]`である．既定実行の2〜5 Streamでは，これらの数値を最終配分とするのではなく，主に評価するStream数をStage 3・4へ与える．
+
+- **入力**：環境変数
+- **処理**：共通定数の定義，実行オプションの読込み，SM候補の生成と検証
+- **出力**：`PipelineOptions`と`vector<vector<int>>`形式のSM候補
+
+#### 01．STGの解析
+
+`01_stg_analysis.hpp`は入力STGを読み込み，各タスクのID，`proc_time`，先行タスクを`TaskSpec`へ変換する．タスクを`proc_time`の中央値に基づいてLIGHT/HEAVYに分類し，GPUカーネルの反復量`work_units`も設定する．
+
+次に，先行関係から後続辺を作成してタスクDFGを構築する．入次数0のタスクからlevel化し，循環依存，重複ID，存在しない先行タスクも検出する．
+
+- **入力**：STGファイルパス
+- **処理**：STG読込み，`TaskSpec`作成，LIGHT/HEAVY分類，DFG構築，level化
+- **出力**：`StgAnalysisResult`（STG，タスク列，DFG，level列）
+
+#### 02．各タスクの重要度作成
+
+`02_task_importance.hpp`は，タスクの処理時間と後続タスクからbottom level（BL）を計算する．
+
+```text
+BL(i) = p(i) + max(BL(j)),  j ∈ succ(i)
+```
+
+後続タスクがない場合は`max(BL(j)) = 0`とする．BLが大きいタスクほど，そのタスクから出口タスクまでの残り処理時間が長いため，Stage 3で優先して配置する．BLにはStream数やSM配分を反映せず，全候補に対して1回だけ計算する．
+
+- **入力**：Stage 1の`vector<TaskSpec>`
+- **処理**：successor表の構築，DFSによるbottom levelのメモ化計算
+- **出力**：`TaskImportanceResult`（successor表とタスクID別bottom level）
+
+#### 03．タスクのStream配置
+
+`03_stream_assignment.hpp`は，SM数を使わずにStream数ごとのタスク配置を作成する．先行タスクがすべて配置済みのタスクをready集合とし，その中からBL最大のタスクを選ぶ．BLが同じ場合は`proc_time`が大きいタスク，それも同じ場合はIDが小さいタスクを優先する．
+
+選択したタスク (i) に対し，各Stream (s) の依存完了時刻以降にある最初の空き区間から予測開始時刻`EST(i,s)`を求め，次式を計算する．
+
+```text
+EFT(i,s) = EST(i,s) + p(i)
+```
+
+`EFT`が最小のStreamへ配置し，同値なら`EST`，それも同値ならStream IDが小さい方を選ぶ．同じStream数にSM候補が複数あっても，この配置は共通である．
+
+- **入力**：タスク列，`TaskImportanceResult`，Stream数
+- **処理**：ready-list scheduling，Stream内空き区間への挿入，EFT最小のStream選択
+- **出力**：`StreamScheduleResult`（Stream数，タスク配置，予測開始・終了時刻，配置時makespan）
+
+#### 04．SM配分と最終構成の選択
+
+`04_execution_configuration_selection.hpp`は，Stage 3のタスク配置を固定したまま，各Streamへ配分するSM数を決定する．タスク (i) のSM数補正後の予測処理時間を \(\hat{p}_{i,s}(M_s)\) とし，Stream (s) の負荷と評価makespanを次式で定義する．
+
+```text
+W_s(M_s) = Σ p_hat(i,s)(M_s),  task i is assigned to Stream s
+C_max(M) = max(W_s(M_s)),          0 ≤ s < Stream数
+```
+
+既定の2〜5 Stream構成では，各Streamに最低8 SMを与え，初期SMプールの全配分を8 SMチャンク単位で全探索する．その最良配分を固定し，114 SMを8 SM単位で分けた端数2 SMをStream 0へ加え，残りのSMも8 SM単位で再び全探索する．各段階で \(C_{max}\) が最小の配分を選び，同値なら追加チャンク数の二乗和が小さい配分を選ぶ．
+
+最後に1〜5 Streamの最良候補を比較し，予測makespanが最小の構成を採用する．同値ならStream数が少ない候補を優先する．この評価値はSTGの依存待ちを含む厳密なDAG makespanではなく，固定配置に対する最大Stream負荷である．
+
+##### 予測処理時間の計算例
+
+`proc_time = 1000`，タスクのSM上限`L_i = 64`，要素数`N = 16384`のタスクを考える．基準の64 SMでは，1 block当たり256要素，256 threads，1 passとなるため，予測処理時間は元の`proc_time`と同じ1000である．
+
+| StreamのSM数 $M_s$ | 有効SM数 | 1 block当たり要素数 | threads/block | pass数 | 予測処理時間 |
+|---:|---:|---:|---:|---:|---:|
+| 114 | 64 | 256 | 256 | 1 | 1000 |
+| 64 | 64 | 256 | 256 | 1 | 1000 |
+| 32 | 32 | 512 | 256 | 2 | 2000 |
+| 24 | 24 | 683 | 256 | 3 | 3000 |
+| 16 | 16 | 1024 | 256 | 4 | 4000 |
+| 8 | 8 | 2048 | 256 | 8 | 8000 |
+
+比例式を用いて同じ関係を簡略化して表す場合は，次式になる．
+
+```text
+p_hat(i,s) = p_i * min(M_proc, L_i)
+                   / min(M_s, M_gpu, L_i, M_proc)
+```
+
+この式は，「基準となるSM数」と「実際にタスクが使えるSM数」の比で，元の処理時間を拡大する近似である．
+
+- `p_i`は，STGに記録されたタスク $i$ の基準処理時間である．
+- 分子の`min(M_proc, L_i)`は，基準処理時間を取得したときの有効SM数を表す．基準SM数が64でも，タスク自身が32 SMまでしか並列化できない場合は32を使う．
+- 分母の`min(M_s, M_gpu, L_i, M_proc)`は，Streamの配分SM数，GPU全体のSM数，タスクの並列上限，基準SM数のうち，最も小さい値である．これを実行時の有効SM数とみなす．
+- 「基準有効SM数 ÷ 実行時有効SM数」を`p_i`に掛ける．実行時のSM数が基準の半分なら予測処理時間は2倍，4分の1なら4倍になる．
+- Streamへ基準以上のSMを配分しても，`L_i`または`M_proc`で打ち切られるため，予測処理時間はそれ以上短くならない．
+
+例えば，`p_i = 1000`，`M_proc = 64`，`L_i = 64`，`M_gpu = 114`とする．Streamへ32 SMを配分した場合は，
+
+```text
+p_hat(i,s) = 1000 * min(64, 64)
+                    / min(32, 114, 64, 64)
+           = 1000 * 64 / 32
+           = 2000
+```
+
+この例では，基準の64 SMに対して実行時に使えるSMが32である．利用可能なSM数が半分になるため，処理時間は基準の1000から2倍の2000になると予測する．同じ値をほかのSM配分へ代入すると，次のようになる．
+
+| StreamのSM数 $M_s$ | 分子`min(64,64)` | 分母`min(M_s,114,64,64)` | 計算 | $\hat{p}_{i,s}$ |
+|---:|---:|---:|---:|---:|
+| 114 | 64 | 64 | $1000\times64/64$ | 1000 |
+| 82 | 64 | 64 | $1000\times64/64$ | 1000 |
+| 64 | 64 | 64 | $1000\times64/64$ | 1000 |
+| 32 | 64 | 32 | $1000\times64/32$ | 2000 |
+| 24 | 64 | 24 | $1000\times64/24$ | 2666.67 |
+| 16 | 64 | 16 | $1000\times64/16$ | 4000 |
+| 8 | 64 | 8 | $1000\times64/8$ | 8000 |
+
+この比例式では24 SMの予測値は約2666.67になる．一方，現行コードは上で説明した整数pass数モデルを使用するため，24 SMでは`pass = 3`となり，予測値は3000になる．比例式はSM数と処理時間の関係を連続的に表した近似であり，実装が実際に候補評価へ使用する値はpass数モデルの値である．
+
+例えば，Stage 3の固定配置が次のようになっているとする．
+
+```text
+Stream 0: Task A (proc_time=1000), Task B (proc_time=500)
+Stream 1: Task C (proc_time=800),  Task D (proc_time=400)
+```
+
+Stream 0へ98 SM，Stream 1へ16 SMを配分すると，Stream 0はタスクのSM上限64で打ち切られて1 pass，Stream 1は4 passであるため，各Streamの予測処理時間合計は次のようになる．
+
+```text
+W_0(98) = 1000 * 1 + 500 * 1 = 1500
+W_1(16) =  800 * 4 + 400 * 4 = 4800
+
+C_max([98,16]) = max(1500, 4800) = 4800
+```
+
+この場合はStream 1がボトルネックである．Stage 4はSM配分候補ごとに同じ計算を行い，この`C_max`が最小になる配分を選択する．
+
+- **入力**：タスク列，Stream数ごとの`StreamScheduleResult`，00のSM候補
+- **処理**：SM数別タスク時間の予測，Stream負荷評価，二段階の8 SM単位全探索，Stream数間の最終比較
+- **出力**：`SmAllocationStageResult`（全候補，Stream数別最良候補，`SmAllocationDecision`）
+
+#### 05．Green Contextを用いたGPU実行
+
+`05_green_context_execution.cuh`は，Stage 4で選択したSM配分とタスク配置をGPU上に構成する．実行前にGPUから総SM数，最小分割サイズ，alignmentを取得し，Green Contextとして実現可能なSM配分かを検証する．
+
+Stream 0はprimary context上の通常CUDA Streamとし，Stream 1以降に対して`cudaDevSmResourceSplit`でSMを切り出し，resource descriptor，Green Context，execution-context Streamを生成する．Taskflowに元のSTG依存と同一Stream内順序を設定し，CUDA Eventによって先行タスクのGPU完了を待ってからLIGHT/HEAVYカーネルを起動する．
+
+Green Context側のStreamで最後のタスクが完了したら，そのStreamとContextを解放し，解放したSMをStream 0側で再利用できる状態に戻す．実行後は資源構築時間，GPU投入から完了までの時間，最初のkernel開始から最後のkernel終了までの時間を計測し，CUDA Event，Stream，Context，GPUメモリを解放する．
+
+- **入力**：タスク列，Stage 4の`SmAllocationDecision`，実行オプション
+- **処理**：SM resource分割，Green Context/Stream作成，Taskflow依存実行，完了GCの動的解放，CUDA時間計測，resource cleanup
+- **出力**：`GreenContextExecutionResult`（resource setup，GPU submit/wait，kernel区間の各時間）
 
 ## 使用技術
 
@@ -122,8 +286,8 @@ Baseline実装．
 - `00_pipeline_configuration.hpp`：全Stageで共有する定数，実行オプションと環境変数の読込み，SM配分候補の定義・生成・検証
 - `01_stg_analysis.hpp`：STG読込み，予測実行時間を含むタスク仕様への変換，DFG構築，レベル化
 - `02_task_importance.hpp`：SM配分に依存しないタスク処理時間と後続経路に基づくbottom levelの算出
-- `03_stream_assignment.hpp`：bottom levelによるready-list schedulingとSM別予測処理時間・予測完了時刻に基づくStream配置
-- `04_execution_configuration_selection.hpp`：Stage 3で評価済みの候補を検証し，Stream数ごとの最良候補と予測makespan最小の実行構成を選択
+- `03_stream_assignment.hpp`：bottom levelによるready-list schedulingと，SM配分に依存しないタスクのStream配置
+- `04_execution_configuration_selection.hpp`：Stage 3で固定した配置に対するSM配分の探索・評価と，予測makespan最小の最終構成の選択
 - `05_green_context_execution.cuh`：CUDA StreamとGreen Contextの作成，TaskflowによるGPU実行，完了後の資源解放
 - `bench_timer.hpp`：各StageおよびGPU実行時間の計測
 
@@ -146,7 +310,7 @@ Baseline実装．
    Existingと同じStream割当てを用い，割当て後にCUDA Green ContextでSMをほぼ均等に分割する．
 
 4. **Proposed**  
-   SM配分に依存しないbottom levelを1回算出し，その重要度とSM別予測処理時間に基づくStream割当てをSM配分候補ごとに行い，予測makespanが最小の実行構成を選択する．複数Stream構成では，Stream 0へ多くのSMを残す非対称な固定SM配分を候補として用いる．
+   SM配分に依存しないbottom levelを1回算出し，その重要度に基づいてSM数を使わずにタスクをStreamへ配置する．その配置を固定したままSM配分を最適化し，予測makespanが最小の最終構成を選択する．
 
 ## 評価用STG
 
@@ -240,7 +404,7 @@ task 1 : importance=...
 stage_1_stg_analysis_seconds: ... s
 stage_2_task_importance_seconds: ... s
 stage_3_stream_placement_seconds: ... s
-stage_4_sm_allocation_comparison_seconds: ... s
+stage_4_sm_allocation_seconds: ... s
 stage_5_green_context_execution_seconds: ... s
 ```
 
@@ -443,24 +607,38 @@ Stream 3 : 24 SM
 
 #### 現行実装のSM数決定
 
-現行実装では，最大レベル幅とStream数上限の小さい方を候補の最大Stream数とし，
-1 Streamからその上限までに対応するH100（114 SM）向け固定候補をすべて評価する．
-以下は，環境変数による上書きを行わない場合の候補である．
+現行実装では，1 Streamから`STG_MAX_STREAMS`で指定する上限（既定は5）までを
+比較する．`00_pipeline_configuration.hpp`が供給する既定のSM配分候補は次のとおりである．
 
 ```text
 Stream数  SM配分候補 [Stream 0, Stream 1, ...]
 1           [114]
-2           [82, 32]
-3           [82, 16, 16]
-3           [82, 24, 8]
-4           [82, 16, 8, 8]
-5           [82, 8, 8, 8, 8]
+2           [58, 56]
+3           [42, 40, 32]
+4           [34, 32, 24, 24]
+5           [26, 24, 24, 24, 16]
 ```
 
+2 Stream以上の値はStage 4へ渡す既定候補であり，最適化後の最終SM配分はSTGのタスク配置によって変化する．
+
 Stage 2では，SM配分候補に依存しないbottom levelを全候補に共通の重要度として1回だけ計算する．
-その後，各候補についてStage 3のStream配置を計算する．
-Stage 4では，同じStream数に複数候補がある場合に最小makespanの候補を残し，
-さらに全Stream数の候補から最小makespanの実行構成を選択する．
+Stage 3では各Stream数について，SM配分候補の数値を使わずにタスクのStream配置を計算する．
+同じStream数のSM候補が複数あっても，タスク配置は共通である．
+
+Stage 4ではStage 3の配置を固定し，そのStream数に対するSM配分を評価・最適化する．
+既定の複数Stream構成では，各Streamに最低8 SMを与えた上で，次の総SM数を8 SM単位で全探索する．
+
+```text
+Stream数  第1段階のSMプール  Stream 0へ加える端数  第2段階の追加SM
+2         112                     2                         0
+3          96                     2                        16
+4          96                     2                        16
+5          80                     2                        32
+```
+
+第1段階でSMプールの配分を決め，分割粒度未満の2 SMをprimary context上のStream 0へ加えた後，
+第2段階の残りを再び8 SM単位で配分する．各段階では，SM数で補正した各Streamの処理時間合計の最大値が
+最小となる配分を選ぶ．最後に全Stream数の候補を比較し，予測makespanが最小の実行構成を選択する．
 
 実験条件と出力を変更するため，次の環境変数を用意している．
 これらは $W_s$ や $B_s$ からSM数を自動配分する機能ではない．
@@ -474,27 +652,12 @@ Stage 4では，同じStream数に複数候補がある場合に最小makespan�
 
 `STG_STREAM_SM_COUNTS`または`STG_TWO_STREAM_GC_SM`を指定した場合は，
 指定から得た1候補だけを評価する．`STG_DISABLE_GC`を指定した場合は，
-各Stream数について全Streamの参照SM数を114としてスケジューリングし，
+各Stream数について全Streamの参照SM数を114としてStage 4の配分評価を行い，
 実行時には通常CUDA Stream間でGPU資源を共有する．
 
-Stream 0はprimary context上の通常Streamとし，複数Streamの固定候補では82 SMを残す．
-Stream 1以降はGreen Context上に作成する．均等寄りの候補では，残り32 SMを
-8 SM単位で可能な限り均等に分配する．3 Streamの`[82, 24, 8]`は，
-GC側の配分差も比較するために追加した非対称候補である．固定候補の数値を
-実行時に自動生成するわけではないが，Green Contextの実際の分割粒度と最小SM数は
-GPUから取得して検証する．実機の条件が固定候補と整合しない場合は実行エラーとなる．
-
-2本以上のStreamを使用する場合について，Stream数を $S$，GC Stream数を $K=S-1$，GC側の総SM数を $M_{GC}=32$，分割粒度を $g=8$ とする．配分可能な単位数 $U$，各GC Streamの基本単位数 $q$，余り $a$ は次式となる．
-
-```text
-U = M_GC / g = 4
-q = floor(U / K)
-a = U mod K
-```
-
-先頭の $a$ 本のGC Streamへ $g(q+1)$ SM，残りのGC Streamへ $gq$ SMを
-割り当てると，均等寄りの固定候補と同じ数値になる．Stream 0の82 SMは
-コード上の固定値であり，数値上は114 SMからGC側の32 SMを引いた残余に対応する．
+Stream 0はprimary context上の通常Stream，Stream 1以降はGreen Context上のStreamとする．
+Stage 4で決定した配分について，Green Contextの実際の分割粒度と最小SM数をGPUから取得して検証する．
+実機の条件で実現できない配分は実行エラーとなる．
 
 Stage 2では，SM数を考慮せず，タスク $i$ の処理時間 $p_i$ と後続タスクの
 bottom levelから重要度 $BL(i)$ を次式で計算する．後続タスクがない場合の
@@ -504,22 +667,30 @@ bottom levelから重要度 $BL(i)$ を次式で計算する．後続タスク�
 BL(i) = p_i + max(BL(j)),  j in succ(i)
 ```
 
-Stage 3では，各候補のSM数をタスク $i$ をStream $s$ で実行する場合の
+Stage 4では，各候補のSM数をタスク $i$ をStream $s$ で実行する場合の
 予測処理時間 $\hat{p}_{i,s}$ に反映する．
 
 ```text
-p_hat(i,s) = p_i * min(M_proc, L_i)
-                   / min(M_s, M_gpu, L_i, M_proc)
+E_base(i) = min(M_proc, L_i)
+E(i,s)    = max(1, min(M_s, M_gpu, L_i))
+
+elements_per_block(E) = ceil(N / E)
+threads_per_block(E)  = max(32, min(256,
+                               32 * ceil(elements_per_block(E) / 32)))
+pass(E) = ceil(elements_per_block(E) / threads_per_block(E))
+
+p_hat(i,s) = p_i * pass(E(i,s)) / pass(E_base(i))
 ```
 
 - $p_i$：STGに記載されたタスク $i$ の処理時間
 - $M_s$：Stream $s$ に配分したSM数
 - $M_{gpu}$：GPU側で利用可能なSM数の上限（114）
 - $M_{proc}$：proc_timeを取得した基準SM数（64）
-- $L_i$：タスク $i$ 自身が並列に利用できるSM数の上限（本実装では114）
+- $L_i$：タスク $i$ 自身が並列に利用できるSM数の上限（本実装では64）
+- $N$：タスクの要素数（$64\times256=16384$）
 
 Stage 2のbottom levelは上式のStream別予測処理時間を使用せず，全候補で共通となる．
-Stage 3だけがStream別予測処理時間を使って配置先と予測makespanを求める．
+Stage 3は元の処理時間だけを使って配置先を決め，Stage 4がStream別予測処理時間を使ってSM配分と予測makespanを評価する．
 
 `STG_KERNEL_AWARE_COST`を指定した評価では，$p_i$ の代わりに実際のカーネル反復回数に基づく次の重みを使用する．
 
@@ -530,9 +701,8 @@ p_i = work_units_i      (LIGHT)
 
 例えば，82 SMと114 SMのStreamはどちらも実効SM数が64であるため，予測処理時間は $p_i$ となる．一方，16 SMのStreamでは $4p_i$，8 SMのStreamでは $8p_i$ と見積もる．
 
-ready集合からはStage 2で算出したbottom levelが大きいタスクを先に選ぶ．配置先は予測完了時刻，
-予測開始時刻，SM数が小さいStream，Stream IDの順で比較して決める．Stream 0を明示的に優先する規則はないが，
-固定候補ではStream 0のSM数が多く予測処理時間が短いため，結果として選ばれやすくなる．
+ready集合からはStage 2で算出したbottom levelが大きいタスクを先に選ぶ．Stage 3の配置先は，
+元の処理時間から求めた予測完了時刻，予測開始時刻，Stream IDの順で比較して決める．
 
 #### Streamの重要度と処理量からSM数を決定する（拡張設計）
 
@@ -596,7 +766,7 @@ Stream 2 : 16 SM
 
 Stream 0の66 SMには，8 SM単位で配分した64 SMと，分割粒度未満の端数2 SMが含まれる．SM配分後は，決定した $M_s$ でタスク割当てと予測makespanを再計算する．更新前より予測makespanが短くなる場合のみ新しい構成を採用する．反復する場合は上限回数を設け，予測makespanが改善しない場合または同じ構成が再現した場合に終了する．
 
-> **実装状況：** 現行の`STG_my_method` は上記の $W_s$，$B_s$，$P_s$ によるSM配分と再割当てをまだ実装していない．現在はStream数別の固定表を使用しており，$W_s$ はログ出力にのみ使用し，Stream別の $B_s$ は集計していない．そのため，この拡張設計を提案手法の実装済み機能として評価するには，コードへの組み込みが必要である．
+> **実装状況：** 現行の`STG_my_method` は上記の $W_s$，$B_s$，$P_s$ によるSM配分とタスクの再割当てを実装していない．現在はStage 3のタスク配置を固定し，Stage 4で各Streamの処理時間合計を基に8 SM単位の配分を全探索する．Stream別の $B_s$ は集計していないため，この拡張設計を提案手法の実装済み機能として評価するには，コードへの組み込みが必要である．
 
 ## Green Context使用時の注意
 

@@ -11,7 +11,7 @@ struct BenchResult {
   double stg_analysis_ms = 0.0;
   double task_importance_ms = 0.0;
   double stream_placement_ms = 0.0;
-  double sm_allocation_comparison_ms = 0.0;
+  double sm_allocation_ms = 0.0;
   double green_context_execution_ms = 0.0;
 
   double gpu_submit_wait_ms = 0.0;
@@ -51,8 +51,8 @@ inline BenchResult add_result(const BenchResult& a, const BenchResult& b) {
   r.stg_analysis_ms          = a.stg_analysis_ms + b.stg_analysis_ms;
   r.task_importance_ms       = a.task_importance_ms + b.task_importance_ms;
   r.stream_placement_ms      = a.stream_placement_ms + b.stream_placement_ms;
-  r.sm_allocation_comparison_ms =
-      a.sm_allocation_comparison_ms + b.sm_allocation_comparison_ms;
+  r.sm_allocation_ms =
+      a.sm_allocation_ms + b.sm_allocation_ms;
   r.green_context_execution_ms =
       a.green_context_execution_ms + b.green_context_execution_ms;
   r.gpu_submit_wait_ms       = a.gpu_submit_wait_ms + b.gpu_submit_wait_ms;
@@ -72,8 +72,8 @@ inline BenchResult div_result(const BenchResult& a, double x) {
   r.stg_analysis_ms          = a.stg_analysis_ms / x;
   r.task_importance_ms       = a.task_importance_ms / x;
   r.stream_placement_ms      = a.stream_placement_ms / x;
-  r.sm_allocation_comparison_ms =
-      a.sm_allocation_comparison_ms / x;
+  r.sm_allocation_ms =
+      a.sm_allocation_ms / x;
   r.green_context_execution_ms =
       a.green_context_execution_ms / x;
   r.gpu_submit_wait_ms       = a.gpu_submit_wait_ms / x;
@@ -94,8 +94,8 @@ inline void print_result(const BenchResult& r) {
             << milliseconds_to_seconds(r.task_importance_ms) << " s\n";
   std::cout << "stage_3_stream_placement_seconds: "
             << milliseconds_to_seconds(r.stream_placement_ms) << " s\n";
-  std::cout << "stage_4_sm_allocation_comparison_seconds: "
-            << milliseconds_to_seconds(r.sm_allocation_comparison_ms)
+  std::cout << "stage_4_sm_allocation_seconds: "
+            << milliseconds_to_seconds(r.sm_allocation_ms)
             << " s\n";
   std::cout << "stage_5_green_context_execution_seconds: "
             << milliseconds_to_seconds(r.green_context_execution_ms)
@@ -110,7 +110,7 @@ inline void print_result(const BenchResult& r) {
   std::cout << "stage 1 STG analysis:      " << r.stg_analysis_ms << " ms\n";
   std::cout << "stage 2 task importance:   " << r.task_importance_ms << " ms\n";
   std::cout << "stage 3 stream placement:  " << r.stream_placement_ms << " ms\n";
-  std::cout << "stage 4 SM comparison:     " << r.sm_allocation_comparison_ms << " ms\n";
+  std::cout << "stage 4 SM allocation:     " << r.sm_allocation_ms << " ms\n";
   std::cout << "stage 5 GC execution:      " << r.green_context_execution_ms << " ms\n";
   std::cout << "gpu_submit_wait_ms:        " << r.gpu_submit_wait_ms << " ms\n";
   std::cout << "gpu_kernel_ms:             " << r.gpu_kernel_ms << " ms\n";
