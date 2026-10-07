@@ -1,0 +1,85 @@
+===== STG summary =====
+num_tasks     : 10
+light_tasks   : 6
+heavy_tasks   : 4
+sum_proc_time : 775
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+
+===== Task importance =====
+task 0 : importance=294
+task 1 : importance=483
+task 2 : importance=137
+task 3 : importance=9
+task 4 : importance=8
+task 5 : importance=7
+task 6 : importance=6
+task 7 : importance=4
+task 8 : importance=4
+task 9 : importance=2
+===========================
+
+===== All SM allocation candidates =====
+smaller estimated makespan is better
+Stream=1 SM=           [114] estimated_makespan=775  <-- BEST FOR 1 STREAM
+Stream=2 SM=         [66,48] estimated_makespan=584  <-- BEST FOR 2 STREAM
+Stream=3 SM=      [66,32,16] estimated_makespan=584  <-- BEST FOR 3 STREAM
+Stream=4 SM=   [34,24,24,32] estimated_makespan=966  <-- BEST FOR 4 STREAM
+Stream=5 SM=   [66,24,8,8,8] estimated_makespan=876  <-- BEST FOR 5 STREAM
+
+===== Best result for each Stream count =====
+Stream=1 SM=           [114] estimated_makespan=775
+Stream=2 SM=         [66,48] estimated_makespan=584  <-- SELECTED
+Stream=3 SM=      [66,32,16] estimated_makespan=584
+Stream=4 SM=   [34,24,24,32] estimated_makespan=966
+Stream=5 SM=   [66,24,8,8,8] estimated_makespan=876
+=============================================
+
+===== Proposed configuration =====
+max_stream_count   : 5
+stream_count       : 2
+selected SM        : [66,48]
+estimated makespan : 584
+sequential estimate: 775
+estimated speedup  : 1.32705 x
+estimated reduction: 24.6452 %
+[GC setup] selected SM allocation: 66 / 48
+
+===== Runtime Resource State: initial =====
+stream[0] [normal] SM=66, stream=0x55c119afa2e0, green_ctx=0
+stream[1] [GC] SM=48, stream=0x55c119afa180, green_ctx=0x55c119ac1e20
+=============================================
+[normal launch] task=1, SM=66, blocks=64, threads/block=256
+[normal launch] task=3, SM=66, blocks=64, threads/block=256
+[normal launch] task=4, SM=66, blocks=64, threads/block=256
+[normal launch] task=6, SM=66, blocks=64, threads/block=256
+[normal launch] task=7, SM=66, blocks=64, threads/block=256
+[GC last task completed] stream=1, task=8
+[GC released] stream[1], returned SM=48, current normal SM=114
+[normal launch] task=9, SM=114, blocks=64, threads/block=256
+
+===== Runtime Resource State: after dynamic GC release =====
+stream[0] [normal] SM=114, stream=0x55c119afa2e0, green_ctx=0
+stream[1] [GC] SM=0, stream=0, green_ctx=0
+=============================================
+[CHECK] all GC streams released
+[CHECK] final normal SM=114
+stream comparison CSV: stream_plots/machine_learning_stream_makespan.csv
+mode: proposed
+===== Proposed Method Stage Times [seconds] =====
+stage_1_stg_analysis_seconds: 0.000078711 s
+stage_2_task_importance_seconds: 0.000009390 s
+stage_3_stream_placement_seconds: 0.000024211 s
+stage_4_sm_allocation_seconds: 0.000243421 s
+stage_5_green_context_execution_seconds: 0.004498976 s
+=================================================
+========== Bench Result ==========
+total_ms:                  313.065 ms
+stage 1 STG analysis:      0.078711 ms
+stage 2 task importance:   0.00939 ms
+stage 3 stream placement:  0.024211 ms
+stage 4 SM allocation:     0.243421 ms
+stage 5 GC execution:      4.49898 ms
+gpu_submit_wait_ms:        3.13511 ms
+gpu_kernel_ms:             2.93805 ms
+==================================

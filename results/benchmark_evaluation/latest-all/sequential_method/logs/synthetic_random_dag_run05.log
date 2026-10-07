@@ -1,0 +1,17 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 218
+heavy_tasks   : 134
+sum_proc_time : 297500
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  1059.69 ms
+task DFG construction:     0 ms
+task levelization:         0.06292 ms
+task assignment:           0 ms
+resource allocation:       299.14 ms
+gpu_submit_wait_ms:        760.232 ms
+gpu_kernel_ms:             760.198 ms
+==================================

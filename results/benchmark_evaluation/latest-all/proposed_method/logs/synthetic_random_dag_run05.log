@@ -1,0 +1,541 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 218
+heavy_tasks   : 134
+sum_proc_time : 297500
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+
+===== Task importance =====
+task 0 : importance=22200
+task 1 : importance=22200
+task 2 : importance=16600
+task 3 : importance=21250
+task 4 : importance=20100
+task 5 : importance=18700
+task 6 : importance=19150
+task 7 : importance=17900
+task 8 : importance=17950
+task 9 : importance=18850
+task 10 : importance=19450
+task 11 : importance=12600
+task 12 : importance=18850
+task 13 : importance=12500
+task 14 : importance=16600
+task 15 : importance=12700
+task 16 : importance=18100
+task 17 : importance=13500
+task 18 : importance=16450
+task 19 : importance=16000
+task 20 : importance=7200
+task 21 : importance=5700
+task 22 : importance=17150
+task 23 : importance=12900
+task 24 : importance=16250
+task 25 : importance=15800
+task 26 : importance=12950
+task 27 : importance=11550
+task 28 : importance=3450
+task 29 : importance=10950
+task 30 : importance=9950
+task 31 : importance=15800
+task 32 : importance=2200
+task 33 : importance=9400
+task 34 : importance=15350
+task 35 : importance=15250
+task 36 : importance=5050
+task 37 : importance=18100
+task 38 : importance=14500
+task 39 : importance=3350
+task 40 : importance=11350
+task 41 : importance=1050
+task 42 : importance=17050
+task 43 : importance=4650
+task 44 : importance=3500
+task 45 : importance=750
+task 46 : importance=12500
+task 47 : importance=16500
+task 48 : importance=4100
+task 49 : importance=13550
+task 50 : importance=4100
+task 51 : importance=15350
+task 52 : importance=13200
+task 53 : importance=950
+task 54 : importance=2600
+task 55 : importance=7900
+task 56 : importance=14800
+task 57 : importance=650
+task 58 : importance=2050
+task 59 : importance=1150
+task 60 : importance=3850
+task 61 : importance=6850
+task 62 : importance=12850
+task 63 : importance=1700
+task 64 : importance=12300
+task 65 : importance=7350
+task 66 : importance=11350
+task 67 : importance=10400
+task 68 : importance=2850
+task 69 : importance=9400
+task 70 : importance=550
+task 71 : importance=9850
+task 72 : importance=12300
+task 73 : importance=9450
+task 74 : importance=10250
+task 75 : importance=8550
+task 76 : importance=2950
+task 77 : importance=6300
+task 78 : importance=1800
+task 79 : importance=5050
+task 80 : importance=13650
+task 81 : importance=2300
+task 82 : importance=2300
+task 83 : importance=9500
+task 84 : importance=7600
+task 85 : importance=9050
+task 86 : importance=13000
+task 87 : importance=13750
+task 88 : importance=10750
+task 89 : importance=4100
+task 90 : importance=5900
+task 91 : importance=8600
+task 92 : importance=2950
+task 93 : importance=2650
+task 94 : importance=2600
+task 95 : importance=3550
+task 96 : importance=6100
+task 97 : importance=1900
+task 98 : importance=9800
+task 99 : importance=9050
+task 100 : importance=4200
+task 101 : importance=13000
+task 102 : importance=750
+task 103 : importance=11750
+task 104 : importance=11650
+task 105 : importance=1150
+task 106 : importance=3150
+task 107 : importance=8700
+task 108 : importance=1250
+task 109 : importance=2850
+task 110 : importance=5150
+task 111 : importance=550
+task 112 : importance=750
+task 113 : importance=950
+task 114 : importance=10900
+task 115 : importance=1800
+task 116 : importance=1600
+task 117 : importance=10600
+task 118 : importance=3550
+task 119 : importance=1150
+task 120 : importance=1700
+task 121 : importance=9850
+task 122 : importance=1050
+task 123 : importance=2600
+task 124 : importance=5050
+task 125 : importance=10900
+task 126 : importance=2150
+task 127 : importance=10350
+task 128 : importance=650
+task 129 : importance=1700
+task 130 : importance=1350
+task 131 : importance=8600
+task 132 : importance=3250
+task 133 : importance=1800
+task 134 : importance=550
+task 135 : importance=6650
+task 136 : importance=5500
+task 137 : importance=9400
+task 138 : importance=1100
+task 139 : importance=950
+task 140 : importance=1150
+task 141 : importance=9250
+task 142 : importance=4850
+task 143 : importance=3050
+task 144 : importance=2600
+task 145 : importance=2400
+task 146 : importance=7900
+task 147 : importance=4400
+task 148 : importance=2400
+task 149 : importance=650
+task 150 : importance=2500
+task 151 : importance=650
+task 152 : importance=2400
+task 153 : importance=750
+task 154 : importance=2600
+task 155 : importance=8450
+task 156 : importance=1850
+task 157 : importance=1850
+task 158 : importance=1150
+task 159 : importance=1700
+task 160 : importance=2350
+task 161 : importance=1350
+task 162 : importance=1800
+task 163 : importance=9400
+task 164 : importance=2500
+task 165 : importance=7200
+task 166 : importance=350
+task 167 : importance=4750
+task 168 : importance=9050
+task 169 : importance=450
+task 170 : importance=7000
+task 171 : importance=8250
+task 172 : importance=7000
+task 173 : importance=750
+task 174 : importance=2150
+task 175 : importance=6550
+task 176 : importance=1200
+task 177 : importance=7800
+task 178 : importance=7900
+task 179 : importance=6950
+task 180 : importance=6450
+task 181 : importance=1150
+task 182 : importance=550
+task 183 : importance=950
+task 184 : importance=550
+task 185 : importance=6100
+task 186 : importance=7950
+task 187 : importance=1050
+task 188 : importance=6650
+task 189 : importance=2100
+task 190 : importance=7200
+task 191 : importance=6200
+task 192 : importance=6100
+task 193 : importance=1250
+task 194 : importance=3450
+task 195 : importance=3150
+task 196 : importance=1150
+task 197 : importance=1050
+task 198 : importance=650
+task 199 : importance=4950
+task 200 : importance=6450
+task 201 : importance=5400
+task 202 : importance=4400
+task 203 : importance=1800
+task 204 : importance=2350
+task 205 : importance=6450
+task 206 : importance=450
+task 207 : importance=450
+task 208 : importance=1150
+task 209 : importance=950
+task 210 : importance=4650
+task 211 : importance=1100
+task 212 : importance=550
+task 213 : importance=5900
+task 214 : importance=1150
+task 215 : importance=5900
+task 216 : importance=9000
+task 217 : importance=650
+task 218 : importance=7950
+task 219 : importance=2100
+task 220 : importance=1250
+task 221 : importance=1000
+task 222 : importance=550
+task 223 : importance=3150
+task 224 : importance=4650
+task 225 : importance=350
+task 226 : importance=1050
+task 227 : importance=6800
+task 228 : importance=950
+task 229 : importance=3000
+task 230 : importance=750
+task 231 : importance=2500
+task 232 : importance=2200
+task 233 : importance=3600
+task 234 : importance=2300
+task 235 : importance=2450
+task 236 : importance=1200
+task 237 : importance=900
+task 238 : importance=1250
+task 239 : importance=5550
+task 240 : importance=1300
+task 241 : importance=750
+task 242 : importance=1150
+task 243 : importance=4800
+task 244 : importance=5650
+task 245 : importance=1250
+task 246 : importance=750
+task 247 : importance=450
+task 248 : importance=2150
+task 249 : importance=1700
+task 250 : importance=5100
+task 251 : importance=1050
+task 252 : importance=350
+task 253 : importance=4650
+task 254 : importance=3450
+task 255 : importance=950
+task 256 : importance=750
+task 257 : importance=550
+task 258 : importance=3500
+task 259 : importance=2550
+task 260 : importance=1250
+task 261 : importance=3050
+task 262 : importance=1350
+task 263 : importance=1300
+task 264 : importance=1150
+task 265 : importance=1350
+task 266 : importance=2300
+task 267 : importance=1400
+task 268 : importance=1150
+task 269 : importance=1150
+task 270 : importance=1800
+task 271 : importance=950
+task 272 : importance=650
+task 273 : importance=4000
+task 274 : importance=950
+task 275 : importance=450
+task 276 : importance=2850
+task 277 : importance=550
+task 278 : importance=450
+task 279 : importance=3050
+task 280 : importance=1050
+task 281 : importance=550
+task 282 : importance=4600
+task 283 : importance=1150
+task 284 : importance=1800
+task 285 : importance=350
+task 286 : importance=3800
+task 287 : importance=2650
+task 288 : importance=1800
+task 289 : importance=1750
+task 290 : importance=2100
+task 291 : importance=750
+task 292 : importance=450
+task 293 : importance=2750
+task 294 : importance=3250
+task 295 : importance=2100
+task 296 : importance=2400
+task 297 : importance=1000
+task 298 : importance=1350
+task 299 : importance=750
+task 300 : importance=1350
+task 301 : importance=1750
+task 302 : importance=550
+task 303 : importance=450
+task 304 : importance=1050
+task 305 : importance=2500
+task 306 : importance=750
+task 307 : importance=4550
+task 308 : importance=1350
+task 309 : importance=650
+task 310 : importance=5650
+task 311 : importance=1000
+task 312 : importance=950
+task 313 : importance=650
+task 314 : importance=4200
+task 315 : importance=5300
+task 316 : importance=2950
+task 317 : importance=450
+task 318 : importance=4750
+task 319 : importance=4400
+task 320 : importance=950
+task 321 : importance=5450
+task 322 : importance=1150
+task 323 : importance=1800
+task 324 : importance=4300
+task 325 : importance=1350
+task 326 : importance=1850
+task 327 : importance=1200
+task 328 : importance=1050
+task 329 : importance=550
+task 330 : importance=3450
+task 331 : importance=650
+task 332 : importance=3150
+task 333 : importance=1850
+task 334 : importance=750
+task 335 : importance=900
+task 336 : importance=750
+task 337 : importance=1500
+task 338 : importance=2200
+task 339 : importance=1400
+task 340 : importance=2300
+task 341 : importance=1350
+task 342 : importance=2300
+task 343 : importance=950
+task 344 : importance=350
+task 345 : importance=750
+task 346 : importance=350
+task 347 : importance=1050
+task 348 : importance=950
+task 349 : importance=1250
+task 350 : importance=650
+task 351 : importance=0
+===========================
+
+===== All SM allocation candidates =====
+smaller estimated makespan is better
+Stream=1 SM=           [114] estimated_makespan=297500  <-- BEST FOR 1 STREAM
+Stream=2 SM=         [66,48] estimated_makespan=297400  <-- BEST FOR 2 STREAM
+Stream=3 SM=      [34,40,40] estimated_makespan=199800  <-- BEST FOR 3 STREAM
+Stream=4 SM=   [34,24,24,32] estimated_makespan=222900  <-- BEST FOR 4 STREAM
+Stream=5 SM=[26,24,24,24,16] estimated_makespan=232400  <-- BEST FOR 5 STREAM
+
+===== Best result for each Stream count =====
+Stream=1 SM=           [114] estimated_makespan=297500
+Stream=2 SM=         [66,48] estimated_makespan=297400
+Stream=3 SM=      [34,40,40] estimated_makespan=199800  <-- SELECTED
+Stream=4 SM=   [34,24,24,32] estimated_makespan=222900
+Stream=5 SM=[26,24,24,24,16] estimated_makespan=232400
+=============================================
+
+===== Proposed configuration =====
+max_stream_count   : 5
+stream_count       : 3
+selected SM        : [34,40,40]
+estimated makespan : 199800
+sequential estimate: 297500
+estimated speedup  : 1.48899 x
+estimated reduction: 32.8403 %
+[GC setup] selected SM allocation: 34 / 40 / 40
+
+===== Runtime Resource State: initial =====
+stream[0] [normal] SM=34, stream=0x5612fd707e50, green_ctx=0
+stream[1] [GC] SM=40, stream=0x5612fd6c1a80, green_ctx=0x5612fd6c2030
+stream[2] [GC] SM=40, stream=0x5612fd704e70, green_ctx=0x5612fd6fa470
+=============================================
+[normal launch] task=0, SM=34, blocks=64, threads/block=256
+[normal launch] task=1, SM=34, blocks=64, threads/block=256
+[normal launch] task=3, SM=34, blocks=64, threads/block=256
+[normal launch] task=4, SM=34, blocks=64, threads/block=256
+[normal launch] task=9, SM=34, blocks=64, threads/block=256
+[normal launch] task=37, SM=34, blocks=64, threads/block=256
+[normal launch] task=42, SM=34, blocks=64, threads/block=256
+[normal launch] task=47, SM=34, blocks=64, threads/block=256
+[normal launch] task=25, SM=34, blocks=64, threads/block=256
+[normal launch] task=34, SM=34, blocks=64, threads/block=256
+[normal launch] task=56, SM=34, blocks=64, threads/block=256
+[normal launch] task=80, SM=34, blocks=64, threads/block=256
+[normal launch] task=86, SM=34, blocks=64, threads/block=256
+[normal launch] task=15, SM=34, blocks=64, threads/block=256
+[normal launch] task=13, SM=34, blocks=64, threads/block=256
+[normal launch] task=72, SM=34, blocks=64, threads/block=256
+[normal launch] task=104, SM=34, blocks=64, threads/block=256
+[normal launch] task=66, SM=34, blocks=64, threads/block=256
+[normal launch] task=88, SM=34, blocks=64, threads/block=256
+[normal launch] task=127, SM=34, blocks=64, threads/block=256
+[normal launch] task=121, SM=34, blocks=64, threads/block=256
+[normal launch] task=83, SM=34, blocks=64, threads/block=256
+[normal launch] task=33, SM=34, blocks=64, threads/block=256
+[normal launch] task=85, SM=34, blocks=64, threads/block=256
+[normal launch] task=99, SM=34, blocks=64, threads/block=256
+[normal launch] task=216, SM=34, blocks=64, threads/block=256
+[normal launch] task=171, SM=34, blocks=64, threads/block=256
+[normal launch] task=218, SM=34, blocks=64, threads/block=256
+[normal launch] task=55, SM=34, blocks=64, threads/block=256
+[normal launch] task=177, SM=34, blocks=64, threads/block=256
+[normal launch] task=165, SM=34, blocks=64, threads/block=256
+[normal launch] task=172, SM=34, blocks=64, threads/block=256
+[normal launch] task=227, SM=34, blocks=64, threads/block=256
+[normal launch] task=175, SM=34, blocks=64, threads/block=256
+[normal launch] task=205, SM=34, blocks=64, threads/block=256
+[normal launch] task=77, SM=34, blocks=64, threads/block=256
+[normal launch] task=215, SM=34, blocks=64, threads/block=256
+[normal launch] task=244, SM=34, blocks=64, threads/block=256
+[normal launch] task=136, SM=34, blocks=64, threads/block=256
+[normal launch] task=315, SM=34, blocks=64, threads/block=256
+[normal launch] task=110, SM=34, blocks=64, threads/block=256
+[normal launch] task=79, SM=34, blocks=64, threads/block=256
+[normal launch] task=243, SM=34, blocks=64, threads/block=256
+[normal launch] task=210, SM=34, blocks=64, threads/block=256
+[normal launch] task=307, SM=34, blocks=64, threads/block=256
+[normal launch] task=147, SM=34, blocks=64, threads/block=256
+[normal launch] task=314, SM=34, blocks=64, threads/block=256
+[normal launch] task=48, SM=34, blocks=64, threads/block=256
+[normal launch] task=273, SM=34, blocks=64, threads/block=256
+[normal launch] task=233, SM=34, blocks=64, threads/block=256
+[normal launch] task=258, SM=34, blocks=64, threads/block=256
+[normal launch] task=330, SM=34, blocks=64, threads/block=256
+[normal launch] task=132, SM=34, blocks=64, threads/block=256
+[normal launch] task=223, SM=34, blocks=64, threads/block=256
+[normal launch] task=261, SM=34, blocks=64, threads/block=256
+[normal launch] task=316, SM=34, blocks=64, threads/block=256
+[normal launch] task=276, SM=34, blocks=64, threads/block=256
+[normal launch] task=287, SM=34, blocks=64, threads/block=256
+[normal launch] task=94, SM=34, blocks=64, threads/block=256
+[normal launch] task=259, SM=34, blocks=64, threads/block=256
+[normal launch] task=164, SM=34, blocks=64, threads/block=256
+[normal launch] task=145, SM=34, blocks=64, threads/block=256
+[normal launch] task=148, SM=34, blocks=64, threads/block=256
+[normal launch] task=160, SM=34, blocks=64, threads/block=256
+[normal launch] task=342, SM=34, blocks=64, threads/block=256
+[normal launch] task=340, SM=34, blocks=64, threads/block=256
+[normal launch] task=338, SM=34, blocks=64, threads/block=256
+[normal launch] task=126, SM=34, blocks=64, threads/block=256
+[normal launch] task=189, SM=34, blocks=64, threads/block=256
+[normal launch] task=97, SM=34, blocks=64, threads/block=256
+[normal launch] task=157, SM=34, blocks=64, threads/block=256
+[normal launch] task=270, SM=34, blocks=64, threads/block=256
+[normal launch] task=288, SM=34, blocks=64, threads/block=256
+[normal launch] task=284, SM=34, blocks=64, threads/block=256
+[normal launch] task=120, SM=34, blocks=64, threads/block=256
+[normal launch] task=159, SM=34, blocks=64, threads/block=256
+[normal launch] task=337, SM=34, blocks=64, threads/block=256
+[normal launch] task=262, SM=34, blocks=64, threads/block=256
+[normal launch] task=300, SM=34, blocks=64, threads/block=256
+[normal launch] task=341, SM=34, blocks=64, threads/block=256
+[normal launch] task=108, SM=34, blocks=64, threads/block=256
+[normal launch] task=238, SM=34, blocks=64, threads/block=256
+[normal launch] task=349, SM=34, blocks=64, threads/block=256
+[normal launch] task=119, SM=34, blocks=64, threads/block=256
+[normal launch] task=181, SM=34, blocks=64, threads/block=256
+[normal launch] task=214, SM=34, blocks=64, threads/block=256
+[normal launch] task=268, SM=34, blocks=64, threads/block=256
+[normal launch] task=322, SM=34, blocks=64, threads/block=256
+[normal launch] task=41, SM=34, blocks=64, threads/block=256
+[normal launch] task=197, SM=34, blocks=64, threads/block=256
+[normal launch] task=280, SM=34, blocks=64, threads/block=256
+[normal launch] task=347, SM=34, blocks=64, threads/block=256
+[normal launch] task=113, SM=34, blocks=64, threads/block=256
+[normal launch] task=209, SM=34, blocks=64, threads/block=256
+[normal launch] task=271, SM=34, blocks=64, threads/block=256
+[normal launch] task=320, SM=34, blocks=64, threads/block=256
+[normal launch] task=335, SM=34, blocks=64, threads/block=256
+[normal launch] task=45, SM=34, blocks=64, threads/block=256
+[normal launch] task=153, SM=34, blocks=64, threads/block=256
+[normal launch] task=241, SM=34, blocks=64, threads/block=256
+[normal launch] task=291, SM=34, blocks=64, threads/block=256
+[normal launch] task=334, SM=34, blocks=64, threads/block=256
+[normal launch] task=57, SM=34, blocks=64, threads/block=256
+[normal launch] task=151, SM=34, blocks=64, threads/block=256
+[normal launch] task=272, SM=34, blocks=64, threads/block=256
+[normal launch] task=331, SM=34, blocks=64, threads/block=256
+[normal launch] task=111, SM=34, blocks=64, threads/block=256
+[normal launch] task=184, SM=34, blocks=64, threads/block=256
+[normal launch] task=257, SM=34, blocks=64, threads/block=256
+[normal launch] task=302, SM=34, blocks=64, threads/block=256
+[normal launch] task=206, SM=34, blocks=64, threads/block=256
+[normal launch] task=275, SM=34, blocks=64, threads/block=256
+[normal launch] task=303, SM=34, blocks=64, threads/block=256
+[normal launch] task=225, SM=34, blocks=64, threads/block=256
+[normal launch] task=344, SM=34, blocks=64, threads/block=256
+[GC last task completed] stream=2, task=346
+[GC released] stream[2], returned SM=40, current normal SM=74
+[GC last task completed] stream=1, task=285
+[GC released] stream[1], returned SM=40, current normal SM=114
+[normal launch] task=351, SM=114, blocks=64, threads/block=256
+
+===== Runtime Resource State: after dynamic GC release =====
+stream[0] [normal] SM=114, stream=0x5612fd707e50, green_ctx=0
+stream[1] [GC] SM=0, stream=0, green_ctx=0
+stream[2] [GC] SM=0, stream=0, green_ctx=0
+=============================================
+[CHECK] all GC streams released
+[CHECK] final normal SM=114
+stream comparison CSV: stream_plots/synthetic_random_dag_stream_makespan.csv
+mode: proposed
+===== Proposed Method Stage Times [seconds] =====
+stage_1_stg_analysis_seconds: 0.000544144 s
+stage_2_task_importance_seconds: 0.000162631 s
+stage_3_stream_placement_seconds: 0.003895830 s
+stage_4_sm_allocation_seconds: 0.008251834 s
+stage_5_green_context_execution_seconds: 0.295366646 s
+=================================================
+========== Bench Result ==========
+total_ms:                  595.214 ms
+stage 1 STG analysis:      0.544144 ms
+stage 2 task importance:   0.162631 ms
+stage 3 stream placement:  3.89583 ms
+stage 4 SM allocation:     8.25183 ms
+stage 5 GC execution:      295.367 ms
+gpu_submit_wait_ms:        292.302 ms
+gpu_kernel_ms:             292.083 ms
+==================================

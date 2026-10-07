@@ -1,0 +1,18 @@
+===== STG summary =====
+num_tasks     : 10
+light_tasks   : 6
+heavy_tasks   : 4
+sum_proc_time : 775
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 2 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  269.239 ms
+task DFG construction:     0.00583 ms
+task levelization:         0.00389 ms
+task assignment:           0.0278 ms
+resource allocation:       0.12243 ms
+gpu_submit_wait_ms:        2.91078 ms
+gpu_kernel_ms:             2.76064 ms
+==================================

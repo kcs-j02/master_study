@@ -1,0 +1,38 @@
+# HITS (b7): five expanded iterations. Each reset is the iteration barrier.
+# Steady-state representative H100 kernel times [us] are used as weights.
+35
+0 428 0          # iter0 spmv(auth)
+1 426 0          # iter0 spmv(hub)
+2 51 1 0         # iter0 sum(auth)
+3 51 1 1         # iter0 sum(hub)
+4 7 1 2          # iter0 divide(auth)
+5 7 1 3          # iter0 divide(hub)
+6 1 2 4 5        # iter0 host reset/barrier
+7 428 1 6        # iter1 spmv(auth)
+8 426 1 6        # iter1 spmv(hub)
+9 51 1 7         # iter1 sum(auth)
+10 51 1 8        # iter1 sum(hub)
+11 7 1 9         # iter1 divide(auth)
+12 7 1 10        # iter1 divide(hub)
+13 1 2 11 12     # iter1 host reset/barrier
+14 428 1 13      # iter2 spmv(auth)
+15 426 1 13      # iter2 spmv(hub)
+16 51 1 14       # iter2 sum(auth)
+17 51 1 15       # iter2 sum(hub)
+18 7 1 16        # iter2 divide(auth)
+19 7 1 17        # iter2 divide(hub)
+20 1 2 18 19     # iter2 host reset/barrier
+21 428 1 20      # iter3 spmv(auth)
+22 426 1 20      # iter3 spmv(hub)
+23 51 1 21       # iter3 sum(auth)
+24 51 1 22       # iter3 sum(hub)
+25 7 1 23        # iter3 divide(auth)
+26 7 1 24        # iter3 divide(hub)
+27 1 2 25 26     # iter3 host reset/barrier
+28 428 1 27      # iter4 spmv(auth)
+29 426 1 27      # iter4 spmv(hub)
+30 51 1 28       # iter4 sum(auth)
+31 51 1 29       # iter4 sum(hub)
+32 7 1 30        # iter4 divide(auth)
+33 7 1 31        # iter4 divide(hub)
+34 1 2 32 33     # iter4 host reset/barrier

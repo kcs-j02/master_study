@@ -1,0 +1,56 @@
+===== STG summary =====
+num_tasks     : 35
+light_tasks   : 25
+heavy_tasks   : 10
+sum_proc_time : 4855
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+===== Existing method + even GC partition =====
+available SM : 114
+unit SM      : 8
+allocated SM : 112
+unused SM    : 2
+stream[0] SM=56 [GC]
+stream[1] SM=56 [GC]
+================================================
+===== Existing method + even GC configuration =====
+max_stream_count : 5
+stream_count     : 2
+estimated makespan: 2435
+sequential estimated: 4855
+estimated speedup    : 1.99384 x
+estimated reduction  : 49.8455 %
+stream 0 : 56 SM
+stream 1 : 56 SM
+===== Planned stream load =====
+stream 0 : tasks=20, proc_load=2435
+stream 1 : tasks=15, proc_load=2420
+===============================
+stream 0 tasks       : 20
+stream 0 busy        : 2435
+stream 0 span        : 2435
+stream 0 density     : 1
+[GC setup time] 0.251592 ms
+
+===== Runtime Resource State: before GC release =====
+stream[0] [GC] stream_ptr=0x5631715850b0, green_ctx=0x563171542380, has_stream=1, has_gc=1, SM=56
+stream[1] [GC] stream_ptr=0x563171585210, green_ctx=0x56317157a6b0, has_stream=1, has_gc=1, SM=56
+=============================================
+[GC released] stream[0]
+[GC released] stream[1]
+
+===== Runtime Resource State: after GC release =====
+stream[0] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+=============================================
+[CHECK] all GC streams released
+mode: existing_method_GC
+========== Bench Result ==========
+total_ms:                  299.365 ms
+task DFG construction:     0.01295 ms
+task levelization:         0.01351 ms
+task assignment:           0.057451 ms
+resource allocation:       0.266643 ms
+gpu_submit_wait_ms:        9.47609 ms
+gpu_kernel_ms:             9.31338 ms
+==================================

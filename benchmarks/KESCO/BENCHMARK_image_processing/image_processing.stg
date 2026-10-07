@@ -1,0 +1,13 @@
+# Image Processing (b8). Dependencies follow execute_cudagraph_manual().
+11
+0 190 0          # gaussian_blur(small)
+1 5 0            # gaussian_blur(large)
+2 3 0            # gaussian_blur(unsharpen)
+3 3 1 0          # sobel(small)
+4 3 1 1          # sobel(large)
+5 10 1 4         # maximum
+6 7 1 4          # minimum
+7 8 2 5 6        # extend
+8 9 1 2          # unsharpen
+9 7 2 7 8        # combine(image2)
+10 9 2 3 9       # combine(image3)

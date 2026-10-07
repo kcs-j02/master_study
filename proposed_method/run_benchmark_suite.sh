@@ -1,0 +1,548 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MASTER_DIR="$(cd "$ROOT_DIR/.." && pwd)"
+
+TASKFLOW_INC="/home/kobayashi/taskflow"
+
+SEQUENTIAL_DIR="$MASTER_DIR/sequential_method"
+SEQUENTIAL_MAIN="$SEQUENTIAL_DIR/main"
+
+PROPOSED_DIR="$ROOT_DIR"
+PROPOSED_MAIN="$PROPOSED_DIR/main"
+
+NSYS="/usr/local/cuda/bin/nsys"
+NSYS_TMP_ROOT="$HOME/tmp/nsys"
+NSYS_RESULT_DIR="$MASTER_DIR/results/batch_profiles/proposed_method"
+STREAM_RESULT_DIR="$MASTER_DIR/results/stream_scheduling_plots"
+
+mkdir -p "$NSYS_TMP_ROOT"
+mkdir -p "$NSYS_RESULT_DIR"
+mkdir -p "$STREAM_RESULT_DIR"
+export TASK_GRAPH_STREAM_PLOT_DIR="$STREAM_RESULT_DIR"
+
+RUNS=12
+WARMUP_RUNS=2
+
+STGS=(
+  "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_mixed_chain_parallel.stg"
+  "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_fully_parallel.stg"
+  "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_multiple_long_branches.stg"
+  "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_random_dag.stg"
+  "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_sequential_chain.stg"
+)
+
+RESULT_NAMES=()
+RESULT_SEQ=()
+RESULT_PROPOSED=()
+RESULT_SPEEDUP=()
+RESULT_SM=()
+
+echo "Building Sequential..."
+
+cd "$SEQUENTIAL_DIR"
+rm -f main
+
+nvcc -O2 -std=c++20 main.cu \
+  -I"${TASKFLOW_INC}" \
+  -o main
+
+echo "Building Proposed..."
+
+cd "$PROPOSED_DIR"
+rm -f main
+
+nvcc -O2 -std=c++20 main.cu \
+  -I"${TASKFLOW_INC}" \
+  -o main
+
+echo "Build completed."
+echo
+
+measure_average() {
+  local executable="$1"
+  local stg="$2"
+  local method_name="$3"
+
+  local sum="0"
+  local count=0
+  local logfile
+  local time_ms
+  local average
+  local collect_stage_times=0
+  local stage_index
+  local stage_value
+  local stage_average
+
+  local -a stage_keys=(
+    "stage_1_stg_analysis_seconds"
+    "stage_2_task_importance_seconds"
+    "stage_3_stream_placement_seconds"
+    "stage_4_sm_allocation_seconds"
+    "stage_5_green_context_execution_seconds"
+  )
+  local -a stage_labels=(
+    "Stage 1 - STG analysis"
+    "Stage 2 - Task importance"
+    "Stage 3 - Stream placement"
+    "Stage 4 - SM allocation"
+    "Stage 5 - Green Context execution"
+  )
+  local -a stage_sums=("0" "0" "0" "0" "0")
+  local -a stage_values=()
+
+  if [ "$method_name" = "Proposed" ]; then
+    collect_stage_times=1
+  fi
+
+  for ((run=1; run<=RUNS; run++)); do
+    logfile=$(mktemp)
+
+    if [ "$method_name" = "Proposed" ]; then
+      if ! STG_DISABLE_STREAM_PLOT=1 \
+        STG_PRINT_STREAM_PROCESSING_TIMES=1 \
+        "$executable" "$stg" > "$logfile" 2>&1; then
+        echo \
+          "[$method_name] execution failed: $executable $stg" \
+          >&2
+        rm -f "$logfile"
+        return 1
+      fi
+    else
+      if ! "$executable" "$stg" > "$logfile" 2>&1; then
+        echo \
+          "[$method_name] execution failed: $executable $stg" \
+          >&2
+        rm -f "$logfile"
+        return 1
+      fi
+    fi
+
+    if ! time_ms=$(
+      awk \
+        '$1 == "gpu_submit_wait_ms:" { value = $2 }
+         END {
+           if (value == "") {
+             exit 1
+           }
+           print value
+         }' \
+        "$logfile"
+    ); then
+      echo \
+        "[$method_name] gpu_submit_wait_ms is missing: $stg" \
+        >&2
+      rm -f "$logfile"
+      return 1
+    fi
+
+    if (( collect_stage_times )); then
+      for stage_index in "${!stage_keys[@]}"; do
+        if ! stage_value=$(
+          awk \
+            -v key="${stage_keys[$stage_index]}:" \
+            '$1 == key { value = $2 }
+             END {
+               if (value == "") {
+                 exit 1
+               }
+               print value
+             }' \
+            "$logfile"
+        ); then
+          echo \
+            "[$method_name] ${stage_keys[$stage_index]} is missing: $stg" \
+            >&2
+          rm -f "$logfile"
+          return 1
+        fi
+        stage_values[$stage_index]="$stage_value"
+      done
+
+    fi
+
+    rm -f "$logfile"
+
+    echo "[$method_name] run $run/$RUNS : ${time_ms} ms" >&2
+
+    if (( run > WARMUP_RUNS )); then
+      sum=$(
+        awk \
+          -v a="$sum" \
+          -v b="$time_ms" \
+          'BEGIN { printf "%.10f", a + b }'
+      )
+
+      if (( collect_stage_times )); then
+        for stage_index in "${!stage_keys[@]}"; do
+          stage_sums[$stage_index]=$(
+            awk \
+              -v a="${stage_sums[$stage_index]}" \
+              -v b="${stage_values[$stage_index]}" \
+              'BEGIN { printf "%.12f", a + b }'
+          )
+        done
+      fi
+
+      ((count+=1))
+    fi
+  done
+
+  if (( count == 0 )); then
+    echo \
+      "[$method_name] no runs remain after warmup: $stg" \
+      >&2
+    return 1
+  fi
+
+  average=$(
+    awk \
+      -v sum="$sum" \
+      -v count="$count" \
+      'BEGIN { printf "%.3f", sum / count }'
+  )
+
+  if (( collect_stage_times )); then
+    echo >&2
+    echo "[$method_name] average stage times after warmup:" >&2
+
+    for stage_index in "${!stage_keys[@]}"; do
+      stage_average=$(
+        awk \
+          -v sum="${stage_sums[$stage_index]}" \
+          -v count="$count" \
+          'BEGIN { printf "%.9f", sum / count }'
+      )
+
+      printf "  %-36s %14s s\n" \
+        "${stage_labels[$stage_index]}" \
+        "$stage_average" \
+        >&2
+    done
+  fi
+
+  echo "$average"
+}
+
+measure_sm_utilization() {
+  local stg="$1"
+
+  local name
+  local report_prefix
+  local report_file
+  local sqlite_file
+  local sm_utilization
+
+  name=$(basename "$stg" .stg)
+
+  report_prefix="$NSYS_RESULT_DIR/${name}_proposed"
+  report_file="${report_prefix}.nsys-rep"
+  sqlite_file="${report_prefix}.sqlite"
+
+  rm -f "$report_file"
+  rm -f "$sqlite_file"
+
+  echo "[Nsight] profiling $name ..." >&2
+
+  TMPDIR="$NSYS_TMP_ROOT" \
+  "$NSYS" profile \
+    --force-overwrite=true \
+    --sample=none \
+    --cpuctxsw=none \
+    --trace=cuda \
+    --gpu-metrics-devices=0 \
+    --gpu-metrics-frequency=10000 \
+    --output="$report_prefix" \
+    "$PROPOSED_MAIN" "$stg" \
+    > /dev/null 2>&1
+
+  TMPDIR="$NSYS_TMP_ROOT" \
+  "$NSYS" export \
+    --type=sqlite \
+    --force-overwrite=true \
+    --output="$sqlite_file" \
+    "$report_file" \
+    > /dev/null 2>&1
+
+  sm_utilization=$(
+    python3 - "$sqlite_file" <<'PY'
+import sqlite3
+import sys
+
+sqlite_file = sys.argv[1]
+
+con = sqlite3.connect(sqlite_file)
+cur = con.cursor()
+
+rows = cur.execute("""
+SELECT
+    g.timestamp,
+    g.value
+FROM GPU_METRICS AS g
+JOIN TARGET_INFO_GPU_METRICS AS info
+    USING (metricId)
+WHERE info.metricName LIKE 'SMs Active%'
+ORDER BY g.timestamp
+""").fetchall()
+
+con.close()
+
+if not rows:
+    print("N/A")
+    sys.exit(0)
+
+values = [float(row[1]) for row in rows]
+
+active_indices = [
+    i for i, value in enumerate(values)
+    if value > 0.0
+]
+
+if not active_indices:
+    print("0.00")
+    sys.exit(0)
+
+start = active_indices[0]
+end = active_indices[-1]
+
+target_values = values[start:end + 1]
+
+avg = sum(target_values) / len(target_values)
+
+print(f"{avg:.2f}")
+PY
+  )
+
+  echo "[Nsight] saved:" >&2
+  echo "  $report_file" >&2
+  echo "  $sqlite_file" >&2
+
+  echo "$sm_utilization"
+}
+
+print_stream_count_loads_and_actual_makespan() {
+  local csv_file="$1"
+  local actual_makespan_ms="$2"
+
+  awk \
+    -F',' \
+    -v actual_makespan_ms="$actual_makespan_ms" \
+    -v measured_runs="$((RUNS - WARMUP_RUNS))" \
+     'BEGIN {
+       print "===== Processing times for each stream count ====="
+       print "Task time = raw proc_time * measured block-pass multiplier"
+       print "Initial SM: 1=114, 2=56, 3=32, 4=24, 5=16"
+     }
+     NR > 1 {
+       if ($1 != current_stream_count) {
+         current_stream_count = $1
+         selected_label = ($15 == 1) ? "  <-- SELECTED" : ""
+         printf "Stream count=%s%s\n", $1, selected_label
+       }
+       printf "  stream %s : initial_optimum_SM=%s, after_stream0_plus_2_SM=%s, final_SM=%s, tasks=%s, raw_proc_sum=%s, before=%s, first_stage_time=%s, second_stage_time=%s\n", \
+         $2, $3, $4, $5, $6, $8, $9, $10, $11
+     }
+     END {
+       printf "Actual makespan: %s ms (GPU submit + wait, average of %d runs)\n", \
+         actual_makespan_ms, measured_runs
+       print "=================================================="
+     }' \
+    "$csv_file" \
+    >&2
+}
+
+echo
+echo "================================================================================================================================"
+echo " Proposed Method Evaluation"
+echo "================================================================================================================================"
+
+printf "%-35s %22s %22s %15s %20s\n" \
+  "STG" \
+  "Sequential Time [ms]" \
+  "Proposed Time [ms]" \
+  "Speedup [x]" \
+  "SM Utilization [%]"
+
+printf "%-35s %22s %22s %15s %20s\n" \
+  "-----------------------------------" \
+  "----------------------" \
+  "----------------------" \
+  "---------------" \
+  "--------------------"
+
+for stg in "${STGS[@]}"; do
+  if [ ! -f "$stg" ]; then
+    echo "STG file not found: $stg" >&2
+    continue
+  fi
+
+  name=$(basename "$stg" .stg)
+
+  echo >&2
+  echo "================================================================" >&2
+  echo "STG: $name" >&2
+  echo "================================================================" >&2
+
+  sequential_time=$(
+    measure_average \
+      "$SEQUENTIAL_MAIN" \
+      "$stg" \
+      "Sequential"
+  )
+
+  proposed_time=$(
+    measure_average \
+      "$PROPOSED_MAIN" \
+      "$stg" \
+      "Proposed"
+  )
+
+  stream_csv="$STREAM_RESULT_DIR/${name}_stream_makespan.csv"
+  stream_png="$STREAM_RESULT_DIR/${name}_stream_makespan.png"
+  processing_csv="$STREAM_RESULT_DIR/${name}_stream_count_processing_times.csv"
+  processing_png="$STREAM_RESULT_DIR/${name}_stream_count_processing_times.png"
+
+  if [ -f "$processing_csv" ]; then
+    print_stream_count_loads_and_actual_makespan \
+      "$processing_csv" \
+      "$proposed_time"
+  else
+    echo "[Stream processing times] CSV not found: $processing_csv" >&2
+  fi
+
+  if [ -f "$stream_csv" ]; then
+    python3 "$PROPOSED_DIR/plot_stream_makespan.py" \
+      "$stream_csv" \
+      "$stream_png"
+    echo "[Stream graph] $stream_png" >&2
+  else
+    echo "[Stream graph] CSV not found: $stream_csv" >&2
+  fi
+
+  if [ -f "$processing_csv" ]; then
+    python3 "$PROPOSED_DIR/plot_selected_stream_processing_times.py" \
+      "$processing_csv" \
+      "$processing_png" \
+      "$proposed_time"
+    echo "[Stream-count processing-time graph] $processing_png" >&2
+  else
+    echo \
+      "[Stream-count processing-time graph] CSV not found: $processing_csv" \
+      >&2
+  fi
+
+  # CSVはグラフ生成と端末表示のためだけの中間ファイルとして扱う。
+  rm -f -- "$stream_csv" "$processing_csv"
+
+  speedup=$(
+    awk \
+      -v seq="$sequential_time" \
+      -v proposed="$proposed_time" \
+      'BEGIN {
+          if (proposed > 0) {
+              printf "%.3f", seq / proposed
+          } else {
+              printf "0.000"
+          }
+      }'
+  )
+
+  sm_utilization=$(
+    measure_sm_utilization "$stg"
+  )
+
+  if [ "$sm_utilization" = "N/A" ]; then
+    printf "%-35s %22s %22s %14sx %20s\n" \
+      "$name" \
+      "$sequential_time" \
+      "$proposed_time" \
+      "$speedup" \
+      "N/A"
+  else
+    printf "%-35s %22s %22s %14sx %19s%%\n" \
+      "$name" \
+      "$sequential_time" \
+      "$proposed_time" \
+      "$speedup" \
+      "$sm_utilization"
+  fi
+
+  RESULT_NAMES+=("$name")
+  RESULT_SEQ+=("$sequential_time")
+  RESULT_PROPOSED+=("$proposed_time")
+  RESULT_SPEEDUP+=("$speedup")
+  RESULT_SM+=("$sm_utilization")
+done
+
+echo
+echo
+echo "################################################################################################################################"
+echo "# FINAL SUMMARY"
+echo "################################################################################################################################"
+echo
+
+printf "%-35s %22s %22s %15s %20s\n" \
+  "STG" \
+  "Sequential Time [ms]" \
+  "Proposed Time [ms]" \
+  "Speedup [x]" \
+  "SM Utilization [%]"
+
+printf "%-35s %22s %22s %15s %20s\n" \
+  "-----------------------------------" \
+  "----------------------" \
+  "----------------------" \
+  "---------------" \
+  "--------------------"
+
+for ((i=0; i<${#RESULT_NAMES[@]}; i++)); do
+  if [ "${RESULT_SM[$i]}" = "N/A" ]; then
+    printf "%-35s %22s %22s %14sx %20s\n" \
+      "${RESULT_NAMES[$i]}" \
+      "${RESULT_SEQ[$i]}" \
+      "${RESULT_PROPOSED[$i]}" \
+      "${RESULT_SPEEDUP[$i]}" \
+      "N/A"
+  else
+    printf "%-35s %22s %22s %14sx %19s%%\n" \
+      "${RESULT_NAMES[$i]}" \
+      "${RESULT_SEQ[$i]}" \
+      "${RESULT_PROPOSED[$i]}" \
+      "${RESULT_SPEEDUP[$i]}" \
+      "${RESULT_SM[$i]}"
+  fi
+done
+
+echo
+echo "################################################################################################################################"
+echo
+
+echo "Execution Time:"
+echo "  Runs    : $RUNS"
+echo "  Warmup  : $WARMUP_RUNS"
+echo "  Average : $((RUNS - WARMUP_RUNS)) runs"
+
+echo
+
+echo "Speedup:"
+echo "  Sequential Time / Proposed Time"
+
+echo
+
+echo "SM Utilization:"
+echo "  Average SMs Active [%]"
+echo "  Measurement range: first active sample to last active sample"
+echo "  Zero samples inside Proposed execution are included"
+
+echo
+
+echo "Nsight Systems Reports:"
+echo "  $NSYS_RESULT_DIR"
+
+echo
+
+echo "Open example:"
+echo "  nsys-ui $NSYS_RESULT_DIR/synthetic_fully_parallel_proposed.nsys-rep"
+
+echo

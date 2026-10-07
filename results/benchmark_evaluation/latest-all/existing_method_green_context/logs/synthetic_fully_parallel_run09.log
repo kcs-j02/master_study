@@ -1,0 +1,74 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 352
+heavy_tasks   : 0
+sum_proc_time : 297500
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+===== Existing method + even GC partition =====
+available SM : 114
+unit SM      : 8
+allocated SM : 112
+unused SM    : 2
+stream[0] SM=24 [GC]
+stream[1] SM=24 [GC]
+stream[2] SM=24 [GC]
+stream[3] SM=24 [GC]
+stream[4] SM=16 [GC]
+================================================
+===== Existing method + even GC configuration =====
+max_stream_count : 5
+stream_count     : 5
+estimated makespan: 59500
+sequential estimated: 297500
+estimated speedup    : 5 x
+estimated reduction  : 80 %
+stream 0 : 24 SM
+stream 1 : 24 SM
+stream 2 : 24 SM
+stream 3 : 24 SM
+stream 4 : 16 SM
+===== Planned stream load =====
+stream 0 : tasks=72, proc_load=59500
+stream 1 : tasks=70, proc_load=59500
+stream 2 : tasks=70, proc_load=59500
+stream 3 : tasks=70, proc_load=59500
+stream 4 : tasks=70, proc_load=59500
+===============================
+stream 0 tasks       : 72
+stream 0 busy        : 59500
+stream 0 span        : 59500
+stream 0 density     : 1
+[GC setup time] 0.492134 ms
+
+===== Runtime Resource State: before GC release =====
+stream[0] [GC] stream_ptr=0x564d3c479910, green_ctx=0x564d3c43b7e0, has_stream=1, has_gc=1, SM=24
+stream[1] [GC] stream_ptr=0x564d3c479a70, green_ctx=0x564d3c4491f0, has_stream=1, has_gc=1, SM=24
+stream[2] [GC] stream_ptr=0x564d3c479bd0, green_ctx=0x564d3c453bf0, has_stream=1, has_gc=1, SM=24
+stream[3] [GC] stream_ptr=0x564d3c479d30, green_ctx=0x564d3c461540, has_stream=1, has_gc=1, SM=24
+stream[4] [GC] stream_ptr=0x564d3c47cd60, green_ctx=0x564d3c46bfc0, has_stream=1, has_gc=1, SM=16
+=============================================
+[GC released] stream[0]
+[GC released] stream[1]
+[GC released] stream[2]
+[GC released] stream[3]
+[GC released] stream[4]
+
+===== Runtime Resource State: after GC release =====
+stream[0] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+stream[2] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+stream[3] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+stream[4] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
+=============================================
+[CHECK] all GC streams released
+mode: existing_method_GC
+========== Bench Result ==========
+total_ms:                  378.717 ms
+task DFG construction:     0.0544 ms
+task levelization:         0.00868 ms
+task assignment:           0.695846 ms
+resource allocation:       0.507024 ms
+gpu_submit_wait_ms:        114.742 ms
+gpu_kernel_ms:             114.573 ms
+==================================
