@@ -1,8 +1,24 @@
 # 単一GPU向けタスクスケジューリング手法の評価
 
-## 研究概要
+## 研究背景
 
-依存関係を持つGPUタスクを対象に、CUDA Streamへのタスク配置とStreaming Multiprocessor（SM）の資源配分を組み合わせ、全体実行時間の短縮を目指す研究です。
+生成AIをはじめとするGPU利用アプリケーションの普及に伴い、単一GPU上の計算資源を効率的に利用することが求められています。依存関係を持つタスクグラフでは、独立したタスクを複数のCUDA Streamへ配置することで並列実行でき、タスクグラフ全体の実行時間（makespan）を短縮できます。
+
+一方、複数のCUDA Streamで実行されるタスクは、GPUのStreaming Multiprocessor（SM）を共有します。そのため、タスクの同時実行によるSM資源の競合によって個々のタスクの実行時間が変化し、重要な依存経路上のタスクが遅延すると、並列性を活用していてもmakespanが増加する可能性があります。CUDA Green Contextを利用すると、Contextごとに使用可能なSM数を制限でき、Stream間のSM資源配分を制御できます。
+
+## 研究目的
+
+本研究では、依存関係を持つStatic Task Graph（STG）を対象に、タスクの重要度を考慮したCUDA Streamへの配置と、StreamごとのSM資源配分を組み合わせる静的スケジューリング手法を評価します。重要度の高いタスクへ必要なSMを確保して依存経路の遅延を抑えながら、残りのSMで独立タスクの並列実行を維持し、STG全体のmakespanを短縮できるかを検証します。
+
+## 既存研究と課題
+
+既存研究のKeSCoは、タスクの依存関係を考慮して複数のCUDA Streamへタスクを配置し、Stream間の同期を減らすことで並列実行を実現します。しかし、既存手法ではStreamごとのSM資源配分を明示的に行わず、全StreamがGPUのSMを共有します。そのため、SM資源の競合が重要タスクの実行を遅延させる可能性があります。
+
+また、SM使用率が同程度であっても、タスクグラフの構造やSM配分の偏りによってmakespanには差が生じます。特に、重要度の高いタスクへSMを集中させるだけでは、各Streamの処理量が同程度で並列性の維持が重要なタスクグラフにおいて、SM数の少ないStreamがボトルネックになる場合があります。したがって、タスクの重要度、依存構造、Stream間の並列性、SM資源配分を同時に考慮して実行構成を選択する必要があります。
+
+本リポジトリでは、逐次実行、既存のStream配置、既存配置へのGreen Context適用、およびタスク重要度に基づくStream配置とSM配分を行う提案手法を同一のSTGベンチマークで比較し、makespanとGPU資源利用状況の観点から評価します。
+
+## 比較手法
 
 次の4手法を同じベンチマーク入力で比較します。
 
@@ -65,7 +81,7 @@ KESCO/ または STG/
     └── run_evaluation.sh
 ```
 
-### 評価結果
+### 評価結果の出力先
 
 最新の比較CSVとグラフは、毎回同じ名前で次のフォルダへ出力されます。
 
@@ -157,6 +173,8 @@ master_study/
 
 ## 評価対象ベンチマーク
 
+評価には、実アプリケーションをもとにした6種類のベンチマークと、タスクグラフの構造を制御した5種類の合成STGを用います。実アプリケーション由来のベンチマークでは実際の処理に近いタスク構成を、合成STGでは並列度や依存関係の違いがスケジューリング性能に与える影響を評価します。
+
 ### 実アプリケーション由来
 
 | フォルダ | ベンチマーク |
@@ -178,7 +196,39 @@ master_study/
 | `STG/BENCHMARK_synthetic_random_dag/` | 依存関係と処理時間が不均一 |
 | `STG/BENCHMARK_synthetic_sequential_chain/` | ほぼ逐次的な依存構造 |
 
-Micro-1とMicro-2は公開資料に元のDAGがないため、`KESCO/BENCHMARK_micro_1/unavailable.md`と`KESCO/BENCHMARK_micro_2/unavailable.md`に理由を記録し、自動評価対象から除外しています。
+以上の実行可能な11種類を4手法で評価し、手法間の実行時間を比較します。Micro-1とMicro-2は公開資料に元のDAGが含まれておらず、再現可能な入力として利用できないため、`KESCO/BENCHMARK_micro_1/unavailable.md`と`KESCO/BENCHMARK_micro_2/unavailable.md`に理由を記録し、自動評価対象から除外しています。
+
+## 評価結果
+
+以下は、本リポジトリに保存されている最新の測定結果です。実行時間は各ベンチマークと手法の組合せを33回実行し、先頭3回のウォームアップを除いた30回の平均を示します。エラーバーは平均の95%信頼区間です。
+
+### 実行時間
+
+#### 実アプリケーション由来ベンチマーク
+
+![実アプリケーション由来ベンチマークの実行時間比較](results/method_comparison_figures/result_BENCHMARK/all_benchmark_execution_time_comparison.png)
+
+#### 合成STG
+
+![合成STGの実行時間比較](results/method_comparison_figures/RESULT_stg/all_stg_execution_time_comparison.png)
+
+実アプリケーション由来ベンチマークでは、今回の測定条件において提案手法は既存手法を上回りませんでした。一方、合成STGでは、提案手法がMixed Chain + Parallelで253.35 ms、Sequential Chainで370.06 msとなり、4手法中で最短でした。Mixed Chain + Parallelでは既存手法の278.72 msに対して約9.1%、Sequential Chainでは既存手法の396.91 msに対して約6.8%短縮しています。Fully Parallel、Multiple Long Branches、Random DAGでは既存手法が最短であり、タスクグラフの構造によって有効なStream配置とSM配分が異なることが分かります。
+
+### SM使用率
+
+SM使用率は、Nsight Systemsで取得した`SMs Active [%]`です。初期化カーネルを除き、対象タスクの最初のCUDAカーネル開始から最後の終了までを測定区間とし、その区間内のサンプル平均を示します。
+
+#### 実アプリケーション由来ベンチマーク
+
+![実アプリケーション由来ベンチマークのSM使用率比較](results/benchmark_evaluation/latest-sm-active/kesco_sm_active_comparison.png)
+
+#### 合成STG
+
+![合成STGのSM使用率比較](results/benchmark_evaluation/latest-sm-active/stg_sm_active_comparison.png)
+
+合成STGのMixed Chain + Parallelでは、提案手法のSM使用率は74.0%であり、Existing + GCの28.6%を上回ると同時に、実行時間も短縮しました。また、Fully Parallel、Multiple Long Branches、Random DAGでも提案手法のSM使用率は90%以上ですが、実行時間は既存手法より長くなっています。この結果は、SM使用率の高さだけではmakespanを説明できず、重要な依存経路の進行、Stream間の負荷分散、SM配分を合わせて評価する必要があることを示しています。
+
+元データは`results/benchmark_evaluation/latest-all/all_results.csv`と`results/benchmark_evaluation/latest-sm-active/sm_active_results.csv`にあります。これらの結果と図は評価スクリプトを再実行すると更新されます。
 
 ## 評価指標
 
