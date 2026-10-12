@@ -1,0 +1,24 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 352
+heavy_tasks   : 0
+sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  840.864 ms
+task DFG construction:     0 ms
+task levelization:         0.11281 ms
+task assignment:           0 ms
+resource allocation:       447.973 ms
+gpu_submit_wait_ms:        392.606 ms
+gpu_kernel_ms:             392.582 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-53ec.qdstrm'
+[1/1] [0%                          ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [0%                          ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [6%                          ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [11%                         ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [=15%                        ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [=16%                        ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [==========47%               ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [============57%             ] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [========================100%] synthetic_fully_parallel_sequential_method.nsys-rep[1/1] [========================100%] synthetic_fully_parallel_sequential_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/synthetic_fully_parallel_sequential_method.nsys-rep

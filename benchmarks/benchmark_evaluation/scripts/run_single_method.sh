@@ -38,8 +38,8 @@ if [[ ! -x "$executable" ]]; then
   exit 1
 fi
 
-readonly runs="${RUNS:-12}"
-readonly warmup_runs="${WARMUP_RUNS:-2}"
+readonly runs="${RUNS:-33}"
+readonly warmup_runs="${WARMUP_RUNS:-3}"
 if [[ ! "$runs" =~ ^[1-9][0-9]*$ || ! "$warmup_runs" =~ ^[0-9]+$ ]] ||
    (( warmup_runs >= runs )); then
   echo "RUNS must be positive and WARMUP_RUNS must satisfy 0 <= WARMUP_RUNS < RUNS" >&2
@@ -57,7 +57,7 @@ fi
 readonly result_dir
 mkdir -p "$result_dir/logs" "$result_dir/work"
 readonly csv="$result_dir/results.csv"
-printf 'benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,note\n' >"$csv"
+printf 'benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,median_gpu_submit_wait_ms,stddev_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,note\n' >"$csv"
 
 if (( $# > 0 )); then
   benchmarks=("$@")
@@ -82,10 +82,15 @@ for benchmark in "${benchmarks[@]}"; do
 
   for ((run = 1; run <= runs; ++run)); do
     log="$result_dir/logs/${benchmark}_run$(printf '%02d' "$run").log"
-    (
+    if ! (
       cd "$result_dir/work"
       STG_DISABLE_STREAM_PLOT=1 "$executable" "$stg"
-    ) >"$log" 2>&1
+    ) >"$log" 2>&1; then
+      echo "benchmark process failed: $method / $benchmark / run $run" >&2
+      echo "log: $log" >&2
+      tail -n 40 "$log" >&2
+      exit 1
+    fi
 
     value="$(awk '$1 == "gpu_submit_wait_ms:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
     echo "  run $run/$runs: $value ms" >&2
@@ -94,11 +99,27 @@ for benchmark in "${benchmarks[@]}"; do
     fi
   done
 
+  sorted_values_file="$result_dir/work/$benchmark.sorted.values"
+  sort -n "$values_file" >"$sorted_values_file"
   stats="$(awk '
-    NR == 1 {min=$1; max=$1}
-    {sum+=$1; if ($1<min) min=$1; if ($1>max) max=$1}
-    END {if (NR == 0) exit 1; printf "%.6f,%.6f,%.6f", sum/NR, min, max}
-  ' "$values_file")"
+    function t_critical_95(df, z, z2, z3, z5, z7) {
+      if (df <= 1) return 12.706
+      if (df == 2) return 4.303
+      z=1.959963984540054
+      z2=z*z; z3=z2*z; z5=z3*z2; z7=z5*z2
+      return z + (z3+z)/(4*df) + (5*z5+16*z3+3*z)/(96*df*df) + (3*z7+19*z5+17*z3-15*z)/(384*df*df*df)
+    }
+    NR == 1 {min=$1}
+    {value[NR]=$1; sum+=$1; sumsq+=$1*$1; max=$1}
+    END {
+      if (NR == 0) exit 1
+      mean=sum/NR
+      median=(NR%2 ? value[(NR+1)/2] : (value[NR/2]+value[NR/2+1])/2)
+      stddev=(NR>1 ? sqrt((sumsq-NR*mean*mean)/(NR-1)) : 0)
+      ci95=(NR>1 ? t_critical_95(NR-1)*stddev/sqrt(NR) : 0)
+      printf "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f", mean,min,max,median,stddev,ci95
+    }
+  ' "$sorted_values_file")"
   printf '%s,%s,ok,%s,%s,%s,%s\n' \
     "$benchmark" "$method" "$runs" "$warmup_runs" "$stats" \
     'shared task-graph benchmark input' >>"$csv"

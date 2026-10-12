@@ -1,0 +1,24 @@
+===== STG summary =====
+num_tasks     : 10
+light_tasks   : 6
+heavy_tasks   : 4
+sum_proc_time : 775
+workload       : KESCO B6 ML Ensemble
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  899.757 ms
+task DFG construction:     0 ms
+task levelization:         0.00444 ms
+task assignment:           0 ms
+resource allocation:       440.656 ms
+gpu_submit_wait_ms:        457.285 ms
+gpu_kernel_ms:             457.262 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-37b3.qdstrm'
+[1/1] [0%                          ] machine_learning_sequential_method.nsys-rep[1/1] [0%                          ] machine_learning_sequential_method.nsys-rep[1/1] [======35%                   ] machine_learning_sequential_method.nsys-rep[1/1] [=========44%                ] machine_learning_sequential_method.nsys-rep[1/1] [===========50%              ] machine_learning_sequential_method.nsys-rep[1/1] [============55%             ] machine_learning_sequential_method.nsys-rep[1/1] [========================100%] machine_learning_sequential_method.nsys-rep[1/1] [========================100%] machine_learning_sequential_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/machine_learning_sequential_method.nsys-rep

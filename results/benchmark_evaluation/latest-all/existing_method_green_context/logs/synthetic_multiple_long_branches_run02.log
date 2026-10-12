@@ -3,6 +3,7 @@ num_tasks     : 352
 light_tasks   : 352
 heavy_tasks   : 0
 sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 ===== Existing method + even GC partition =====
@@ -36,13 +37,13 @@ stream 0 tasks       : 90
 stream 0 busy        : 74700
 stream 0 span        : 74700
 stream 0 density     : 1
-[GC setup time] 0.399413 ms
+[GC setup time] 0.391061 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x56060d5d45c0, green_ctx=0x56060d5a3de0, has_stream=1, has_gc=1, SM=32
-stream[1] [GC] stream_ptr=0x56060d5d4720, green_ctx=0x56060d5b17f0, has_stream=1, has_gc=1, SM=32
-stream[2] [GC] stream_ptr=0x56060d5d7750, green_ctx=0x56060d5bc1f0, has_stream=1, has_gc=1, SM=24
-stream[3] [GC] stream_ptr=0x56060d5d78b0, green_ctx=0x56060d5c9b40, has_stream=1, has_gc=1, SM=24
+stream[0] [GC] stream_ptr=0x55eb1e8b7ca0, green_ctx=0x55eb1e8874c0, has_stream=1, has_gc=1, SM=32
+stream[1] [GC] stream_ptr=0x55eb1e8b7e00, green_ctx=0x55eb1e894ed0, has_stream=1, has_gc=1, SM=32
+stream[2] [GC] stream_ptr=0x55eb1e8bae30, green_ctx=0x55eb1e89f8d0, has_stream=1, has_gc=1, SM=24
+stream[3] [GC] stream_ptr=0x55eb1e8baf90, green_ctx=0x55eb1e8ad220, has_stream=1, has_gc=1, SM=24
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -58,11 +59,11 @@ stream[3] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 [CHECK] all GC streams released
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  432.991 ms
-task DFG construction:     0.04761 ms
-task levelization:         0.097631 ms
-task assignment:           0.258642 ms
-resource allocation:       0.414663 ms
-gpu_submit_wait_ms:        132.48 ms
-gpu_kernel_ms:             132.343 ms
+total_ms:                  422.014 ms
+task DFG construction:     0.04429 ms
+task levelization:         0.097711 ms
+task assignment:           0.245541 ms
+resource allocation:       0.402631 ms
+gpu_submit_wait_ms:        134.178 ms
+gpu_kernel_ms:             134.104 ms
 ==================================

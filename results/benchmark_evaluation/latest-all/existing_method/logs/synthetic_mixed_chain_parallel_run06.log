@@ -3,16 +3,17 @@ num_tasks     : 352
 light_tasks   : 352
 heavy_tasks   : 0
 sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 5 streams, no Green Context
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  558.29 ms
-task DFG construction:     0.053511 ms
-task levelization:         0.191231 ms
-task assignment:           0.584786 ms
-resource allocation:       0.121681 ms
-gpu_submit_wait_ms:        276.134 ms
-gpu_kernel_ms:             275.949 ms
+total_ms:                  567.241 ms
+task DFG construction:     0.11753 ms
+task levelization:         0.485382 ms
+task assignment:           1.30801 ms
+resource allocation:       0.148811 ms
+gpu_submit_wait_ms:        278.676 ms
+gpu_kernel_ms:             278.532 ms
 ==================================

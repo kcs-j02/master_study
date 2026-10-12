@@ -3,6 +3,7 @@ num_tasks     : 8
 light_tasks   : 5
 heavy_tasks   : 3
 sum_proc_time : 786
+workload       : KESCO B10 Deep Learning
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 
@@ -44,8 +45,8 @@ estimated reduction: 11.1959 %
 [GC setup] selected SM allocation: 66 / 48
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=66, stream=0x5561def80670, green_ctx=0
-stream[1] [GC] SM=48, stream=0x5561def80510, green_ctx=0x5561def481b0
+stream[0] [normal] SM=66, stream=0x56233a7ab680, green_ctx=0
+stream[1] [GC] SM=48, stream=0x56233a7ab520, green_ctx=0x56233a79dc50
 =============================================
 [normal launch] task=0, SM=66, blocks=64, threads/block=256
 [normal launch] task=2, SM=66, blocks=64, threads/block=256
@@ -56,7 +57,7 @@ stream[1] [GC] SM=48, stream=0x5561def80510, green_ctx=0x5561def481b0
 [normal launch] task=7, SM=114, blocks=64, threads/block=256
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x5561def80670, green_ctx=0
+stream[0] [normal] SM=114, stream=0x56233a7ab680, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 =============================================
 [CHECK] all GC streams released
@@ -64,19 +65,19 @@ stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream comparison CSV: stream_plots/deep_learning_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000071351 s
-stage_2_task_importance_seconds: 0.000006060 s
-stage_3_stream_placement_seconds: 0.000020390 s
-stage_4_sm_allocation_seconds: 0.000189942 s
-stage_5_green_context_execution_seconds: 0.004775047 s
+stage_1_stg_analysis_seconds: 0.000074510 s
+stage_2_task_importance_seconds: 0.000004460 s
+stage_3_stream_placement_seconds: 0.000020140 s
+stage_4_sm_allocation_seconds: 0.000186080 s
+stage_5_green_context_execution_seconds: 0.130272574 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  290.752 ms
-stage 1 STG analysis:      0.071351 ms
-stage 2 task importance:   0.00606 ms
-stage 3 stream placement:  0.02039 ms
-stage 4 SM allocation:     0.189942 ms
-stage 5 GC execution:      4.77505 ms
-gpu_submit_wait_ms:        3.3931 ms
-gpu_kernel_ms:             3.17501 ms
+total_ms:                  398.382 ms
+stage 1 STG analysis:      0.07451 ms
+stage 2 task importance:   0.00446 ms
+stage 3 stream placement:  0.02014 ms
+stage 4 SM allocation:     0.18608 ms
+stage 5 GC execution:      130.273 ms
+gpu_submit_wait_ms:        122.11 ms
+gpu_kernel_ms:             121.96 ms
 ==================================

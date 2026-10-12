@@ -46,6 +46,11 @@ std::string format_sm_counts(const std::vector<int>& sm_counts) {
 
 void print_stg_summary(const std::vector<TaskSpec>& tasks) {
   stg::print_stg_summary(tasks);
+  if (!tasks.empty()) {
+    std::cout << "workload       : "
+              << stg::benchmark_kind_name(tasks.front().benchmark_kind)
+              << "\n";
+  }
   std::cout
       << "task_grid     : " << kTaskParallelSmLimit << " blocks\n"
       << "task_SM_limit : " << kTaskParallelSmLimit << " SM\n";

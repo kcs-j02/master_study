@@ -3,6 +3,7 @@ num_tasks     : 3
 light_tasks   : 2
 heavy_tasks   : 1
 sum_proc_time : 4220
+workload       : KESCO B1 Vector Squares
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 ===== Existing method + even GC partition =====
@@ -30,11 +31,11 @@ stream 0 tasks       : 2
 stream 0 busy        : 2240
 stream 0 span        : 2240
 stream 0 density     : 1
-[GC setup time] 0.233112 ms
+[GC setup time] 0.247951 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x5576855cc090, green_ctx=0x557685589370, has_stream=1, has_gc=1, SM=56
-stream[1] [GC] stream_ptr=0x5576855cc1f0, green_ctx=0x5576855c1690, has_stream=1, has_gc=1, SM=56
+stream[0] [GC] stream_ptr=0x561997046190, green_ctx=0x56199702ddf0, has_stream=1, has_gc=1, SM=56
+stream[1] [GC] stream_ptr=0x5619970462f0, green_ctx=0x56199703b790, has_stream=1, has_gc=1, SM=56
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -46,11 +47,11 @@ stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 [CHECK] all GC streams released
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  315.866 ms
-task DFG construction:     0.00128 ms
-task levelization:         0.00047 ms
-task assignment:           0.00671 ms
-resource allocation:       0.248152 ms
-gpu_submit_wait_ms:        11.811 ms
-gpu_kernel_ms:             11.6432 ms
+total_ms:                  335.736 ms
+task DFG construction:     0.00197 ms
+task levelization:         0.00042 ms
+task assignment:           0.00896 ms
+resource allocation:       0.266061 ms
+gpu_submit_wait_ms:        68.9887 ms
+gpu_kernel_ms:             68.8314 ms
 ==================================

@@ -3,15 +3,16 @@ num_tasks     : 3
 light_tasks   : 2
 heavy_tasks   : 1
 sum_proc_time : 4220
+workload       : KESCO B1 Vector Squares
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  293.288 ms
+total_ms:                  391.234 ms
 task DFG construction:     0 ms
-task levelization:         0.00473 ms
+task levelization:         0.00587 ms
 task assignment:           0 ms
-resource allocation:       282.696 ms
-gpu_submit_wait_ms:        10.475 ms
-gpu_kernel_ms:             10.4607 ms
+resource allocation:       288.992 ms
+gpu_submit_wait_ms:        100.774 ms
+gpu_kernel_ms:             100.76 ms
 ==================================

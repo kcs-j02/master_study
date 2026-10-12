@@ -39,8 +39,13 @@ void launch_task_kernel(
     const TaskSpec& task,
     float* dmem,
     int n,
+    stg::kesco::Workspace& kesco_workspace,
     cudaStream_t stream) {
-  stg::launch_task_kernel(task, dmem, n, stream);
+  if (task.benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    stg::launch_task_kernel(task, dmem, n, stream);
+  } else {
+    stg::kesco::launch(task, kesco_workspace, stream);
+  }
 }
 
 std::vector<std::size_t> make_topological_order(
@@ -62,20 +67,22 @@ BenchResult run_sequential_cuda(const std::vector<TaskSpec>& tasks) {
   constexpr int N = kTaskElementCount;
 
   float* dmem = nullptr;
+  const stg::BenchmarkKind benchmark_kind = tasks.empty()
+      ? stg::BenchmarkKind::SYNTHETIC
+      : tasks.front().benchmark_kind;
+  stg::kesco::Workspace kesco_workspace;
   cudaStream_t stream = nullptr;
   cudaEvent_t start_event = nullptr;
   cudaEvent_t stop_event = nullptr;
 
   const auto resource_start = Clock::now();
 
-  CUDA_CHECK(cudaMalloc(
-      &dmem,
-      static_cast<std::size_t>(N) * sizeof(float)));
-
-  CUDA_CHECK(cudaMemset(
-      dmem,
-      0,
-      static_cast<std::size_t>(N) * sizeof(float)));
+  if (benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    CUDA_CHECK(cudaMalloc(&dmem, static_cast<std::size_t>(N) * sizeof(float)));
+    CUDA_CHECK(cudaMemset(dmem, 0, static_cast<std::size_t>(N) * sizeof(float)));
+  } else {
+    kesco_workspace = stg::kesco::create_workspace(benchmark_kind);
+  }
 
   CUDA_CHECK(cudaStreamCreateWithFlags(
       &stream,
@@ -97,6 +104,7 @@ BenchResult run_sequential_cuda(const std::vector<TaskSpec>& tasks) {
         task,
         dmem,
         N,
+        kesco_workspace,
         stream);
   }
 
@@ -128,7 +136,8 @@ BenchResult run_sequential_cuda(const std::vector<TaskSpec>& tasks) {
   CUDA_CHECK(cudaEventDestroy(start_event));
   CUDA_CHECK(cudaEventDestroy(stop_event));
   CUDA_CHECK(cudaStreamDestroy(stream));
-  CUDA_CHECK(cudaFree(dmem));
+  if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::destroy_workspace(kesco_workspace);
 
   const auto total_end = Clock::now();
 
@@ -140,6 +149,12 @@ BenchResult run_sequential_cuda(const std::vector<TaskSpec>& tasks) {
 
 void print_stg_summary(const std::vector<TaskSpec>& tasks) {
   stg::print_stg_summary(tasks);
+
+  if (!tasks.empty()) {
+    std::cout << "workload       : "
+              << stg::benchmark_kind_name(tasks.front().benchmark_kind)
+              << "\n";
+  }
 
   std::cout
       << "task_grid      : "

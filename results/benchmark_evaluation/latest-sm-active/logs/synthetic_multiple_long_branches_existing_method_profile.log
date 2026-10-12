@@ -1,0 +1,25 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 352
+heavy_tasks   : 0
+sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 4 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  568.451 ms
+task DFG construction:     0.049801 ms
+task levelization:         0.10239 ms
+task assignment:           0.256341 ms
+resource allocation:       0.132411 ms
+gpu_submit_wait_ms:        130.482 ms
+gpu_kernel_ms:             130.268 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-4edb.qdstrm'
+[1/1] [0%                          ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [0%                          ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [=====29%                    ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [============56%             ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [=============58%            ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [==============62%           ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [===============66%          ] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [========================100%] synthetic_multiple_long_branches_existing_method.nsys-rep[1/1] [========================100%] synthetic_multiple_long_branches_existing_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/synthetic_multiple_long_branches_existing_method.nsys-rep

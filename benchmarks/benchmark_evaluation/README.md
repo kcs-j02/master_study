@@ -16,7 +16,7 @@ cd /home/kobayashi/main/master_study/benchmarks
 ./run_all_benchmarks.sh
 ```
 
-既定では各組合せを12回実行し、先頭2回をウォームアップとして集計から除外します。
+既定では各組合せを33回実行し、先頭3回をウォームアップとして除外します。残り30サンプルについて平均・中央値・標準偏差・95%信頼区間を集計します。
 
 ```bash
 RUNS=20 WARMUP_RUNS=5 ./run_all_benchmarks.sh
@@ -100,6 +100,21 @@ KESCO由来の入力は`../KESCO/BENCHMARK_<ベンチマーク名>/`、合成STG
 
 Micro-1/Micro-2は公開資料に元のDAGがないため、`../KESCO/BENCHMARK_micro_1/unavailable.md`と`../KESCO/BENCHMARK_micro_2/unavailable.md`に理由だけを記録しており、実行対象には含めません。
 
+### KESCO由来ベンチマークの実カーネル
+
+KESCO由来の6件は、KESCOが比較対象として採用した公式grCUDAベンチマークスイートのCUDA C++実装を使用します。移植元は`AlbertoParravicini/grcuda`の論文用ブランチ、commit `ee0dd4cb1bade06b25ddd7dc56b4441e01172f0e`です。BSD 3-Clauseライセンスは`../common/KESCO_LICENSE.txt`に保存しています。
+
+| 入力 | 実行カーネル |
+|---|---|
+| `vector_square` | vector square、reduction |
+| `black_scholes` | Black–Scholes option pricing |
+| `machine_learning` | ridge regression、naive Bayes、softmax、argmax |
+| `hits` | sparse matrix-vector multiplication、normalization |
+| `image_processing` | Gaussian blur、Sobel、min/max、unsharpen、combine |
+| `deep_learning` | convolution、mean pooling、concat、dot product |
+
+入力サイズは元スイートのV100向け最小公式サイズに固定しています。全手法の「1タスク最大64 SM」という条件を維持するため、2D/3Dカーネルも合計64 blockで起動し、各カーネル内のgrid-stride loopで全入力を処理します。独自STGおよび`synthetic_*`入力は従来どおりLIGHT/HEAVY合成カーネルへ自動的にフォールバックします。
+
 ## 1手法だけを全ベンチマークで評価
 
 ```bash
@@ -113,6 +128,15 @@ Micro-1/Micro-2は公開資料に元のDAGがないため、`../KESCO/BENCHMARK_
 
 ## 評価値
 
-各実行ファイルが出力する`gpu_submit_wait_ms`を収集し、ウォームアップを除いた平均・最小・最大をCSVへ記録します。グラフの棒は平均、エラーバーは最小から最大の範囲です。
+各実行ファイルが出力する`gpu_submit_wait_ms`を収集し、ウォームアップを除いた平均・最小・最大・中央値・標準偏差・95%信頼区間をCSVへ記録します。グラフの棒は平均、エラーバーは平均の95%信頼区間です。
 
-現在の4手法が実行するのは各実装内のlight/heavy合成CUDAカーネルです。したがって、元アプリケーションのエンドツーエンド性能ではなく、同じタスクグラフを入力したスケジューリング手法の比較です。
+KESCO由来の6件は、公式grCUDAベンチマークスイートのB1/B5/B6/B7/B8/B10 CUDAカーネルを実行します。合成STGの5件は従来のLIGHT/HEAVY合成CUDAカーネルを実行します。どちらも同じタスクグラフとカーネル入力を4手法で共有し、スケジューリング手法だけを比較します。
+
+SM使用率は実行時間と別にNsight Systemsで測定します。ワークスペース初期化カーネルは除外し、対象タスクの最初のCUDAカーネル開始から最後の終了までの`SMs Active`を集計します。
+
+```bash
+cd /home/kobayashi/main/master_study/benchmarks
+./run_sm_utilization.sh
+```
+
+結果は`../../results/benchmark_evaluation/latest-sm-active/`にCSVと実カーネル用・STG用の比較グラフとして保存します。

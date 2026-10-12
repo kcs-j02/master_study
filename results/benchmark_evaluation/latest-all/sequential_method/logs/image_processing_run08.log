@@ -3,15 +3,16 @@ num_tasks     : 11
 light_tasks   : 6
 heavy_tasks   : 5
 sum_proc_time : 254
+workload       : KESCO B8 Image Processing
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  280.658 ms
+total_ms:                  348.304 ms
 task DFG construction:     0 ms
-task levelization:         0.00508 ms
+task levelization:         0.00818 ms
 task assignment:           0 ms
-resource allocation:       279.461 ms
-gpu_submit_wait_ms:        1.09694 ms
-gpu_kernel_ms:             1.08653 ms
+resource allocation:       268.566 ms
+gpu_submit_wait_ms:        78.0512 ms
+gpu_kernel_ms:             78.0367 ms
 ==================================

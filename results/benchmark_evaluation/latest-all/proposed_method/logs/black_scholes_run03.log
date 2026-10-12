@@ -3,6 +3,7 @@ num_tasks     : 10
 light_tasks   : 6
 heavy_tasks   : 4
 sum_proc_time : 17683
+workload       : KESCO B5 Black-Scholes
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 
@@ -46,23 +47,23 @@ estimated reduction: 38.6869 %
 [GC setup] selected SM allocation: 34 / 32 / 24 / 24
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=34, stream=0x560663f30b10, green_ctx=0
-stream[1] [GC] SM=32, stream=0x560663edf750, green_ctx=0x560663ee0060
-stream[2] [GC] SM=24, stream=0x560663f22f00, green_ctx=0x560663f18500
-stream[3] [GC] SM=24, stream=0x560663f309b0, green_ctx=0x560663f25f30
+stream[0] [normal] SM=34, stream=0x557bcf661790, green_ctx=0
+stream[1] [GC] SM=32, stream=0x557bcf63ae10, green_ctx=0x557bcf63b720
+stream[2] [GC] SM=24, stream=0x557bcf653c00, green_ctx=0x557bcf649200
+stream[3] [GC] SM=24, stream=0x557bcf661630, green_ctx=0x557bcf656c30
 =============================================
 [normal launch] task=6, SM=34, blocks=64, threads/block=256
 [normal launch] task=4, SM=34, blocks=64, threads/block=256
 [normal launch] task=5, SM=34, blocks=64, threads/block=256
-[GC last task completed] stream=3, task=8
-[GC released] stream[3], returned SM=24, current normal SM=58
 [GC last task completed] stream=1, task=2
-[GC released] stream[1], returned SM=32, current normal SM=90
+[GC last task completed] stream=3, task=8
+[GC released] stream[1], returned SM=32, current normal SM=66
+[GC released] stream[3], returned SM=24, current normal SM=90
 [GC last task completed] stream=2, task=3
 [GC released] stream[2], returned SM=24, current normal SM=114
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x560663f30b10, green_ctx=0
+stream[0] [normal] SM=114, stream=0x557bcf661790, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream[2] [GC] SM=0, stream=0, green_ctx=0
 stream[3] [GC] SM=0, stream=0, green_ctx=0
@@ -72,19 +73,19 @@ stream[3] [GC] SM=0, stream=0, green_ctx=0
 stream comparison CSV: stream_plots/black_scholes_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000124921 s
-stage_2_task_importance_seconds: 0.000011280 s
-stage_3_stream_placement_seconds: 0.000051300 s
-stage_4_sm_allocation_seconds: 0.000608505 s
-stage_5_green_context_execution_seconds: 0.023825920 s
+stage_1_stg_analysis_seconds: 0.000131290 s
+stage_2_task_importance_seconds: 0.000008950 s
+stage_3_stream_placement_seconds: 0.000057250 s
+stage_4_sm_allocation_seconds: 0.000576382 s
+stage_5_green_context_execution_seconds: 0.010549432 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  311.506 ms
-stage 1 STG analysis:      0.124921 ms
-stage 2 task importance:   0.01128 ms
-stage 3 stream placement:  0.0513 ms
-stage 4 SM allocation:     0.608505 ms
-stage 5 GC execution:      23.8259 ms
-gpu_submit_wait_ms:        22.5294 ms
-gpu_kernel_ms:             22.328 ms
+total_ms:                  277.195 ms
+stage 1 STG analysis:      0.13129 ms
+stage 2 task importance:   0.00895 ms
+stage 3 stream placement:  0.05725 ms
+stage 4 SM allocation:     0.576382 ms
+stage 5 GC execution:      10.5494 ms
+gpu_submit_wait_ms:        2.56303 ms
+gpu_kernel_ms:             2.24771 ms
 ==================================

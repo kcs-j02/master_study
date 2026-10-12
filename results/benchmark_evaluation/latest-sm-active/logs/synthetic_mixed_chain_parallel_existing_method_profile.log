@@ -1,0 +1,25 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 352
+heavy_tasks   : 0
+sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 5 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  710.058 ms
+task DFG construction:     0.08531 ms
+task levelization:         0.321981 ms
+task assignment:           0.983155 ms
+resource allocation:       0.207721 ms
+gpu_submit_wait_ms:        278.481 ms
+gpu_kernel_ms:             278.136 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-f214.qdstrm'
+[1/1] [0%                          ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [0%                          ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [=====30%                    ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [============56%             ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [=============58%            ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [==============62%           ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [===============66%          ] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [========================100%] synthetic_mixed_chain_parallel_existing_method.nsys-rep[1/1] [========================100%] synthetic_mixed_chain_parallel_existing_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/synthetic_mixed_chain_parallel_existing_method.nsys-rep

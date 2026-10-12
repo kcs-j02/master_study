@@ -15,8 +15,8 @@ NSYS_RESULT_DIR="$MASTER_DIR/results/batch_profiles/sequential_method"
 mkdir -p "$NSYS_TMP_ROOT"
 mkdir -p "$NSYS_RESULT_DIR"
 
-RUNS=12
-WARMUP_RUNS=2
+RUNS=33
+WARMUP_RUNS=3
 
 STGS=(
   "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_mixed_chain_parallel.stg"

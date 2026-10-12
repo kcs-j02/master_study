@@ -3,16 +3,17 @@ num_tasks     : 10
 light_tasks   : 6
 heavy_tasks   : 4
 sum_proc_time : 775
+workload       : KESCO B6 ML Ensemble
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 2 streams, no Green Context
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  288.793 ms
-task DFG construction:     0.005 ms
-task levelization:         0.00321 ms
-task assignment:           0.02261 ms
-resource allocation:       0.11994 ms
-gpu_submit_wait_ms:        2.46068 ms
-gpu_kernel_ms:             2.316 ms
+total_ms:                  736.6 ms
+task DFG construction:     0.01173 ms
+task levelization:         0.00161 ms
+task assignment:           0.014351 ms
+resource allocation:       0.139221 ms
+gpu_submit_wait_ms:        464.109 ms
+gpu_kernel_ms:             463.909 ms
 ==================================

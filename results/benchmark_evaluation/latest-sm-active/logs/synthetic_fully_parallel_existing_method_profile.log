@@ -1,0 +1,25 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 352
+heavy_tasks   : 0
+sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 5 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  564.372 ms
+task DFG construction:     0.05207 ms
+task levelization:         0.00705 ms
+task assignment:           0.610953 ms
+resource allocation:       0.202211 ms
+gpu_submit_wait_ms:        110.802 ms
+gpu_kernel_ms:             110.46 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-204b.qdstrm'
+[1/1] [0%                          ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [0%                          ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [=======36%                  ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [=============60%            ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [==============64%           ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [================69%         ] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [========================100%] synthetic_fully_parallel_existing_method.nsys-rep[1/1] [========================100%] synthetic_fully_parallel_existing_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/synthetic_fully_parallel_existing_method.nsys-rep

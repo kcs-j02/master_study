@@ -1771,8 +1771,18 @@ inline void launch_configured_task_kernel(
 
     cudaStream_t stream,
 
-    int configured_stream_sm
+    int configured_stream_sm,
+
+    stg::kesco::Workspace* kesco_workspace = nullptr
 ) {
+  if (task.benchmark_kind != stg::BenchmarkKind::SYNTHETIC) {
+    if (kesco_workspace == nullptr) {
+      throw std::invalid_argument("KESCO task requires a benchmark workspace");
+    }
+    stg::kesco::launch(task, *kesco_workspace, stream);
+    return;
+  }
+
   if (
       task.work_units <= 0
   ) {
@@ -1852,7 +1862,9 @@ inline void launch_task_kernel_chunked(
 
     int chunk_count,
 
-    int configured_stream_sm
+    int configured_stream_sm,
+
+    stg::kesco::Workspace* kesco_workspace = nullptr
 ) {
   if (
       chunk_count <= 1 ||
@@ -1863,7 +1875,8 @@ inline void launch_task_kernel_chunked(
         device_memory,
         element_count,
         stream,
-        configured_stream_sm
+        configured_stream_sm,
+        kesco_workspace
     );
 
 
@@ -1916,7 +1929,8 @@ inline void launch_task_kernel_chunked(
         device_memory,
         element_count,
         stream,
-        configured_stream_sm
+        configured_stream_sm,
+        kesco_workspace
     );
   }
 }
@@ -2340,6 +2354,13 @@ execute_with_green_context(
   constexpr int element_count =
       kTaskElementCount;
 
+  const stg::BenchmarkKind benchmark_kind =
+      tasks.empty()
+          ? stg::BenchmarkKind::SYNTHETIC
+          : tasks.front().benchmark_kind;
+
+  stg::kesco::Workspace kesco_workspace;
+
 
   const std::size_t allocation_element_count =
       static_cast<std::size_t>(
@@ -2354,23 +2375,18 @@ execute_with_green_context(
       nullptr;
 
 
-  GC_CUDA_CHECK(
-      cudaMalloc(
-          &device_memory,
-          allocation_element_count *
-              sizeof(float)
-      )
-  );
-
-
-  GC_CUDA_CHECK(
-      cudaMemset(
-          device_memory,
-          0,
-          allocation_element_count *
-              sizeof(float)
-      )
-  );
+  if (benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    GC_CUDA_CHECK(cudaMalloc(
+        &device_memory,
+        allocation_element_count * sizeof(float)));
+    GC_CUDA_CHECK(cudaMemset(
+        device_memory,
+        0,
+        allocation_element_count * sizeof(float)));
+  }
+  else {
+    kesco_workspace = stg::kesco::create_workspace(benchmark_kind);
+  }
 
 
   GreenContextExecutionResult result;
@@ -2697,13 +2713,15 @@ execute_with_green_context(
 
 
               float* task_memory =
-                  device_memory +
+                  benchmark_kind == stg::BenchmarkKind::SYNTHETIC
+                      ? device_memory +
                   static_cast<std::size_t>(
                       stream_id
                   ) *
                   static_cast<std::size_t>(
                       element_count
-                  );
+                  )
+                      : nullptr;
 
 
               /*
@@ -2769,7 +2787,8 @@ execute_with_green_context(
                         element_count,
                         stream,
                         chunk_count,
-                        configured_stream_sm
+                        configured_stream_sm,
+                        &kesco_workspace
                     );
               }
 
@@ -2780,7 +2799,8 @@ execute_with_green_context(
                         task_memory,
                         element_count,
                         stream,
-                        configured_stream_sm
+                        configured_stream_sm,
+                        &kesco_workspace
                     );
               }
 
@@ -3160,11 +3180,10 @@ execute_with_green_context(
   );
 
 
-  GC_CUDA_CHECK(
-      cudaFree(
-          device_memory
-      )
-  );
+  if (device_memory != nullptr) {
+    GC_CUDA_CHECK(cudaFree(device_memory));
+  }
+  stg::kesco::destroy_workspace(kesco_workspace);
 
 
   return result;

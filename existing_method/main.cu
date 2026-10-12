@@ -66,14 +66,14 @@ void launch_task_kernel(
     const TaskSpec& task,
     float* dmem,
     int n,
+    stg::kesco::Workspace& kesco_workspace,
     cudaStream_t stream
 ) {
-  stg::launch_task_kernel(
-      task,
-      dmem,
-      n,
-      stream
-  );
+  if (task.benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    stg::launch_task_kernel(task, dmem, n, stream);
+  } else {
+    stg::kesco::launch(task, kesco_workspace, stream);
+  }
 }
 
 BenchResult run_taskflow_cuda(
@@ -147,29 +147,17 @@ BenchResult run_taskflow_cuda(
       kTaskElementCount;
 
   float* dmem = nullptr;
+  const stg::BenchmarkKind benchmark_kind = tasks.empty()
+      ? stg::BenchmarkKind::SYNTHETIC
+      : tasks.front().benchmark_kind;
+  stg::kesco::Workspace kesco_workspace;
 
-  CUDA_CHECK(
-      cudaMalloc(
-          &dmem,
-          static_cast<std::size_t>(N) *
-              static_cast<std::size_t>(
-                  stream_count
-              ) *
-              sizeof(float)
-      )
-  );
-
-  CUDA_CHECK(
-      cudaMemset(
-          dmem,
-          0,
-          static_cast<std::size_t>(N) *
-              static_cast<std::size_t>(
-                  stream_count
-              ) *
-              sizeof(float)
-      )
-  );
+  if (benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    CUDA_CHECK(cudaMalloc(&dmem, static_cast<std::size_t>(N) * stream_count * sizeof(float)));
+    CUDA_CHECK(cudaMemset(dmem, 0, static_cast<std::size_t>(N) * stream_count * sizeof(float)));
+  } else {
+    kesco_workspace = stg::kesco::create_workspace(benchmark_kind);
+  }
 
   RuntimeResources rr;
 
@@ -362,18 +350,19 @@ BenchResult run_taskflow_cuda(
               );
 
               float* stream_dmem =
-                  dmem +
+                  benchmark_kind == stg::BenchmarkKind::SYNTHETIC ? dmem +
                   static_cast<std::size_t>(
                       stream_id
                   ) *
                   static_cast<std::size_t>(
                       N
-                  );
+                  ) : nullptr;
 
               launch_task_kernel(
                   task,
                   stream_dmem,
                   N,
+                  kesco_workspace,
                   stream
               );
 
@@ -711,11 +700,8 @@ BenchResult run_taskflow_cuda(
       rr
   );
 
-  CUDA_CHECK(
-      cudaFree(
-          dmem
-      )
-  );
+  if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::destroy_workspace(kesco_workspace);
 
   const auto total_end =
       Clock::now();
@@ -735,6 +721,12 @@ void print_stg_summary(
   stg::print_stg_summary(
       tasks
   );
+
+  if (!tasks.empty()) {
+    std::cout << "workload       : "
+              << stg::benchmark_kind_name(tasks.front().benchmark_kind)
+              << '\n';
+  }
 
   std::cout
       << "task_grid     : "

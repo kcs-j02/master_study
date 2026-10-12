@@ -1,0 +1,24 @@
+===== STG summary =====
+num_tasks     : 352
+light_tasks   : 218
+heavy_tasks   : 134
+sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  1192.13 ms
+task DFG construction:     0 ms
+task levelization:         0.10581 ms
+task assignment:           0 ms
+resource allocation:       429.989 ms
+gpu_submit_wait_ms:        761.698 ms
+gpu_kernel_ms:             761.647 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-3c0b.qdstrm'
+[1/1] [0%                          ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [0%                          ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [5%                          ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [=====32%                    ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [=======36%                  ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [========40%                 ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [============56%             ] synthetic_random_dag_sequential_method.nsys-rep[1/1] [========================100%] synthetic_random_dag_sequential_method.nsys-rep[1/1] [========================100%] synthetic_random_dag_sequential_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/synthetic_random_dag_sequential_method.nsys-rep

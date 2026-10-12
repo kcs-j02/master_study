@@ -43,18 +43,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_results(path: Path) -> dict[tuple[str, str], tuple[float, float, float]]:
-    results: dict[tuple[str, str], tuple[float, float, float]] = {}
+def read_results(path: Path) -> dict[tuple[str, str], tuple[float, float, float, float]]:
+    results: dict[tuple[str, str], tuple[float, float, float, float]] = {}
     with path.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
             if row["status"] != "ok":
                 continue
             key = (row["benchmark"], row["method"])
-            results[key] = (
-                float(row["mean_gpu_submit_wait_ms"]),
-                float(row["min_gpu_submit_wait_ms"]),
-                float(row["max_gpu_submit_wait_ms"]),
+            mean = float(row["mean_gpu_submit_wait_ms"])
+            minimum = float(row["min_gpu_submit_wait_ms"])
+            maximum = float(row["max_gpu_submit_wait_ms"])
+            ci95_text = row.get("ci95_gpu_submit_wait_ms", "")
+            ci95 = (
+                float(ci95_text)
+                if ci95_text
+                else max(mean - minimum, maximum - mean)
             )
+            results[key] = (mean, minimum, maximum, ci95)
     return results
 
 
@@ -95,9 +100,8 @@ def main() -> None:
     largest = 0.0
     for method_index, (method, legend, color, hatch) in enumerate(METHODS):
         means = np.array([results[(benchmark, method)][0] for benchmark, _ in selected_benchmarks])
-        minima = np.array([results[(benchmark, method)][1] for benchmark, _ in selected_benchmarks])
-        maxima = np.array([results[(benchmark, method)][2] for benchmark, _ in selected_benchmarks])
-        largest = max(largest, float(maxima.max()))
+        ci95 = np.array([results[(benchmark, method)][3] for benchmark, _ in selected_benchmarks])
+        largest = max(largest, float((means + ci95).max()))
         positions = x + (method_index - (len(METHODS) - 1) / 2.0) * width
         bars = axis.bar(
             positions,
@@ -108,7 +112,7 @@ def main() -> None:
             edgecolor="black",
             linewidth=1.4,
             hatch=hatch,
-            yerr=np.vstack((means - minima, maxima - means)),
+            yerr=ci95,
             capsize=3,
             error_kw={"elinewidth": 1.0},
         )
@@ -144,7 +148,7 @@ def main() -> None:
     axis.grid(axis="y", linestyle="--", alpha=0.35)
     axis.set_axisbelow(True)
     axis.set_ylim(0, largest * 1.18 if largest > 0 else 1)
-    axis.legend(ncols=4, fontsize=14, loc="upper right")
+    axis.legend(ncols=4, fontsize=14, loc="upper right", title="Error bars: 95% CI")
     figure.tight_layout()
 
     args.output_path.parent.mkdir(parents=True, exist_ok=True)

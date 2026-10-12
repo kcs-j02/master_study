@@ -1,0 +1,18 @@
+===== STG summary =====
+num_tasks     : 10
+light_tasks   : 6
+heavy_tasks   : 4
+sum_proc_time : 17683
+workload       : KESCO B5 Black-Scholes
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  282.718 ms
+task DFG construction:     0 ms
+task levelization:         0.004641 ms
+task assignment:           0 ms
+resource allocation:       277.61 ms
+gpu_submit_wait_ms:        2.80166 ms
+gpu_kernel_ms:             2.78845 ms
+==================================

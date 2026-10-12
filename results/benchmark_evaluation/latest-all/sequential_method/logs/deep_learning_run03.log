@@ -3,15 +3,16 @@ num_tasks     : 8
 light_tasks   : 5
 heavy_tasks   : 3
 sum_proc_time : 786
+workload       : KESCO B10 Deep Learning
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  290.148 ms
+total_ms:                  531.35 ms
 task DFG construction:     0 ms
-task levelization:         0.00665 ms
+task levelization:         0.00412 ms
 task assignment:           0 ms
-resource allocation:       287.122 ms
-gpu_submit_wait_ms:        2.9189 ms
-gpu_kernel_ms:             2.90822 ms
+resource allocation:       294.319 ms
+gpu_submit_wait_ms:        234.454 ms
+gpu_kernel_ms:             234.438 ms
 ==================================

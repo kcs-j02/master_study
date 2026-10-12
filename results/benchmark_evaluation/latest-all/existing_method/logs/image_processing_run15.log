@@ -1,0 +1,19 @@
+===== STG summary =====
+num_tasks     : 11
+light_tasks   : 6
+heavy_tasks   : 5
+sum_proc_time : 254
+workload       : KESCO B8 Image Processing
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 3 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  342.76 ms
+task DFG construction:     0.00268 ms
+task levelization:         0.00171 ms
+task assignment:           0.014541 ms
+resource allocation:       0.13759 ms
+gpu_submit_wait_ms:        62.6742 ms
+gpu_kernel_ms:             62.458 ms
+==================================

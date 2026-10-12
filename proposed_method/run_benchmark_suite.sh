@@ -22,8 +22,8 @@ mkdir -p "$NSYS_RESULT_DIR"
 mkdir -p "$STREAM_RESULT_DIR"
 export TASK_GRAPH_STREAM_PLOT_DIR="$STREAM_RESULT_DIR"
 
-RUNS=12
-WARMUP_RUNS=2
+RUNS=33
+WARMUP_RUNS=3
 
 STGS=(
   "$MASTER_DIR/benchmarks/benchmark_inputs/synthetic_mixed_chain_parallel.stg"

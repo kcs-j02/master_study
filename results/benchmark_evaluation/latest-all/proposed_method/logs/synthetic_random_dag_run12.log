@@ -3,6 +3,7 @@ num_tasks     : 352
 light_tasks   : 218
 heavy_tasks   : 134
 sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 
@@ -388,9 +389,9 @@ estimated reduction: 32.8403 %
 [GC setup] selected SM allocation: 34 / 40 / 40
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=34, stream=0x5572ee346f90, green_ctx=0
-stream[1] [GC] SM=40, stream=0x5572ee300bc0, green_ctx=0x5572ee301170
-stream[2] [GC] SM=40, stream=0x5572ee343fb0, green_ctx=0x5572ee3395b0
+stream[0] [normal] SM=34, stream=0x55751bd07c60, green_ctx=0
+stream[1] [GC] SM=40, stream=0x55751bcc1890, green_ctx=0x55751bcc1e40
+stream[2] [GC] SM=40, stream=0x55751bd04c80, green_ctx=0x55751bcfa280
 =============================================
 [normal launch] task=0, SM=34, blocks=64, threads/block=256
 [normal launch] task=1, SM=34, blocks=64, threads/block=256
@@ -514,7 +515,7 @@ stream[2] [GC] SM=40, stream=0x5572ee343fb0, green_ctx=0x5572ee3395b0
 [normal launch] task=351, SM=114, blocks=64, threads/block=256
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x5572ee346f90, green_ctx=0
+stream[0] [normal] SM=114, stream=0x55751bd07c60, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream[2] [GC] SM=0, stream=0, green_ctx=0
 =============================================
@@ -523,19 +524,19 @@ stream[2] [GC] SM=0, stream=0, green_ctx=0
 stream comparison CSV: stream_plots/synthetic_random_dag_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000374633 s
-stage_2_task_importance_seconds: 0.000125351 s
-stage_3_stream_placement_seconds: 0.002015035 s
-stage_4_sm_allocation_seconds: 0.008244703 s
-stage_5_green_context_execution_seconds: 0.295285286 s
+stage_1_stg_analysis_seconds: 0.000614922 s
+stage_2_task_importance_seconds: 0.000326121 s
+stage_3_stream_placement_seconds: 0.002374710 s
+stage_4_sm_allocation_seconds: 0.008176432 s
+stage_5_green_context_execution_seconds: 0.303184819 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  584.282 ms
-stage 1 STG analysis:      0.374633 ms
-stage 2 task importance:   0.125351 ms
-stage 3 stream placement:  2.01504 ms
-stage 4 SM allocation:     8.2447 ms
-stage 5 GC execution:      295.285 ms
-gpu_submit_wait_ms:        292.104 ms
-gpu_kernel_ms:             291.969 ms
+total_ms:                  587.55 ms
+stage 1 STG analysis:      0.614922 ms
+stage 2 task importance:   0.326121 ms
+stage 3 stream placement:  2.37471 ms
+stage 4 SM allocation:     8.17643 ms
+stage 5 GC execution:      303.185 ms
+gpu_submit_wait_ms:        299.408 ms
+gpu_kernel_ms:             299.229 ms
 ==================================

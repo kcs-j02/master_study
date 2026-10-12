@@ -34,6 +34,52 @@ enum class KernelKind {
   HEAVY
 };
 
+enum class BenchmarkKind {
+  SYNTHETIC,
+  VECTOR_SQUARE,
+  BLACK_SCHOLES,
+  MACHINE_LEARNING,
+  HITS,
+  IMAGE_PROCESSING,
+  DEEP_LEARNING
+};
+
+inline const char* benchmark_kind_name(BenchmarkKind kind) {
+  switch (kind) {
+    case BenchmarkKind::VECTOR_SQUARE: return "KESCO B1 Vector Squares";
+    case BenchmarkKind::BLACK_SCHOLES: return "KESCO B5 Black-Scholes";
+    case BenchmarkKind::MACHINE_LEARNING: return "KESCO B6 ML Ensemble";
+    case BenchmarkKind::HITS: return "KESCO B7 HITS";
+    case BenchmarkKind::IMAGE_PROCESSING: return "KESCO B8 Image Processing";
+    case BenchmarkKind::DEEP_LEARNING: return "KESCO B10 Deep Learning";
+    case BenchmarkKind::SYNTHETIC: return "synthetic LIGHT/HEAVY";
+  }
+  return "unknown";
+}
+
+inline BenchmarkKind benchmark_kind_from_path(const std::string& path) {
+  if (path.find("vector_square") != std::string::npos) {
+    return BenchmarkKind::VECTOR_SQUARE;
+  }
+  if (path.find("black_scholes") != std::string::npos) {
+    return BenchmarkKind::BLACK_SCHOLES;
+  }
+  if (path.find("machine_learning") != std::string::npos) {
+    return BenchmarkKind::MACHINE_LEARNING;
+  }
+  if (path.find("image_processing") != std::string::npos) {
+    return BenchmarkKind::IMAGE_PROCESSING;
+  }
+  if (path.find("deep_learning") != std::string::npos) {
+    return BenchmarkKind::DEEP_LEARNING;
+  }
+  if (path.find("BENCHMARK_hits") != std::string::npos ||
+      path.find("/hits.stg") != std::string::npos) {
+    return BenchmarkKind::HITS;
+  }
+  return BenchmarkKind::SYNTHETIC;
+}
+
 struct StgTask {
   int id = -1;
   int proc_time = 0;
@@ -42,6 +88,7 @@ struct StgTask {
 
 struct StgGraph {
   int num_tasks = 0;
+  BenchmarkKind benchmark_kind = BenchmarkKind::SYNTHETIC;
   std::vector<StgTask> tasks;
 };
 
@@ -51,6 +98,7 @@ struct TaskSpec {
   KernelKind kind = KernelKind::LIGHT;
   int work_units = 1;
   int parallel_sm_limit = 64;
+  BenchmarkKind benchmark_kind = BenchmarkKind::SYNTHETIC;
   std::vector<int> preds;
 };
 
@@ -104,6 +152,7 @@ inline StgGraph load_stg_without_comm(const std::string& path) {
   }
 
   StgGraph graph;
+  graph.benchmark_kind = benchmark_kind_from_path(path);
 
   {
     std::istringstream iss(lines.front());
@@ -197,6 +246,7 @@ inline std::vector<TaskSpecT> make_task_specs_from_stg_common(
     TaskSpecT spec;
     spec.id = task.id;
     spec.proc_time = task.proc_time;
+    spec.benchmark_kind = graph.benchmark_kind;
     spec.preds = task.preds;
     configure(spec, task, threshold);
     specs.push_back(std::move(spec));
@@ -334,3 +384,5 @@ inline void print_stg_summary(const std::vector<TaskSpecT>& tasks) {
             << "sum_proc_time : " << total_proc_time << "\n";
 }
 }  // namespace stg
+
+#include "kesco_benchmark_kernels.cuh"

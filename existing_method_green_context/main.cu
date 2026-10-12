@@ -119,8 +119,13 @@ std::vector<TaskSpec> make_task_specs_from_stg(const StgGraph& g) {
 void launch_task_kernel(const TaskSpec& task,
                         float* dmem,
                         int n,
+                        stg::kesco::Workspace& kesco_workspace,
                         cudaStream_t stream) {
-  stg::launch_task_kernel(task, dmem, n, stream);
+  if (task.benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    stg::launch_task_kernel(task, dmem, n, stream);
+  } else {
+    stg::kesco::launch(task, kesco_workspace, stream);
+  }
 }
 
 double parse_sm_active_average_from_sqlite(const fs::path& sqlite_path) {
@@ -242,24 +247,20 @@ double run_sequential_cuda(
 
   constexpr int N = kTaskElementCount;
   float* dmem = nullptr;
+  const stg::BenchmarkKind benchmark_kind = tasks.empty()
+      ? stg::BenchmarkKind::SYNTHETIC
+      : tasks.front().benchmark_kind;
+  stg::kesco::Workspace kesco_workspace;
   cudaStream_t stream = nullptr;
   cudaEvent_t start_event = nullptr;
   cudaEvent_t stop_event = nullptr;
 
-  CUDA_CHECK(
-      cudaMalloc(
-          &dmem,
-          static_cast<std::size_t>(N) * sizeof(float)
-      )
-  );
-
-  CUDA_CHECK(
-      cudaMemset(
-          dmem,
-          0,
-          static_cast<std::size_t>(N) * sizeof(float)
-      )
-  );
+  if (benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    CUDA_CHECK(cudaMalloc(&dmem, static_cast<std::size_t>(N) * sizeof(float)));
+    CUDA_CHECK(cudaMemset(dmem, 0, static_cast<std::size_t>(N) * sizeof(float)));
+  } else {
+    kesco_workspace = stg::kesco::create_workspace(benchmark_kind);
+  }
 
   CUDA_CHECK(
       cudaStreamCreateWithFlags(
@@ -278,6 +279,7 @@ double run_sequential_cuda(
           *task_by_id.at(task_id),
           dmem,
           N,
+          kesco_workspace,
           stream
       );
     }
@@ -299,7 +301,8 @@ double run_sequential_cuda(
   CUDA_CHECK(cudaEventDestroy(start_event));
   CUDA_CHECK(cudaEventDestroy(stop_event));
   CUDA_CHECK(cudaStreamDestroy(stream));
-  CUDA_CHECK(cudaFree(dmem));
+  if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::destroy_workspace(kesco_workspace);
 
   return static_cast<double>(sequential_gpu_ms);
 }
@@ -536,25 +539,17 @@ BenchResult run_taskflow_cuda(
   constexpr int N = kTaskElementCount;
 
   float* dmem = nullptr;
+  const stg::BenchmarkKind benchmark_kind = tasks.empty()
+      ? stg::BenchmarkKind::SYNTHETIC
+      : tasks.front().benchmark_kind;
+  stg::kesco::Workspace kesco_workspace;
 
-  CUDA_CHECK(
-      cudaMalloc(
-          &dmem,
-          static_cast<std::size_t>(N) *
-              static_cast<std::size_t>(stream_count) *
-              sizeof(float)
-      )
-  );
-
-  CUDA_CHECK(
-      cudaMemset(
-          dmem,
-          0,
-          static_cast<std::size_t>(N) *
-              static_cast<std::size_t>(stream_count) *
-              sizeof(float)
-      )
-  );
+  if (benchmark_kind == stg::BenchmarkKind::SYNTHETIC) {
+    CUDA_CHECK(cudaMalloc(&dmem, static_cast<std::size_t>(N) * stream_count * sizeof(float)));
+    CUDA_CHECK(cudaMemset(dmem, 0, static_cast<std::size_t>(N) * stream_count * sizeof(float)));
+  } else {
+    kesco_workspace = stg::kesco::create_workspace(benchmark_kind);
+  }
 
   /*
    * 6. 決定済みのSM数を使用して実行資源を生成
@@ -714,10 +709,11 @@ BenchResult run_taskflow_cuda(
 
           launch_task_kernel(
               task,
-              dmem +
+              benchmark_kind == stg::BenchmarkKind::SYNTHETIC ? dmem +
                   static_cast<std::size_t>(stream_id) *
-                      static_cast<std::size_t>(N),
+                      static_cast<std::size_t>(N) : nullptr,
               N,
+              kesco_workspace,
               stream
           );
 
@@ -1010,9 +1006,8 @@ BenchResult run_taskflow_cuda(
 
   destroy_runtime_resources(rr);
 
-  CUDA_CHECK(
-      cudaFree(dmem)
-  );
+  if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::destroy_workspace(kesco_workspace);
 
   const auto total_end = Clock::now();
 
@@ -1027,6 +1022,10 @@ BenchResult run_taskflow_cuda(
 
 void print_stg_summary(const std::vector<TaskSpec>& tasks) {
   stg::print_stg_summary(tasks);
+  if (!tasks.empty()) {
+    std::cout << "workload       : "
+              << stg::benchmark_kind_name(tasks.front().benchmark_kind) << '\n';
+  }
   std::cout << "task_grid     : " << kTaskParallelSmLimit << " blocks\n";
   std::cout << "task_SM_limit : " << kTaskParallelSmLimit << " SM\n";
 }

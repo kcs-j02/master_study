@@ -1,0 +1,25 @@
+===== STG summary =====
+num_tasks     : 35
+light_tasks   : 25
+heavy_tasks   : 10
+sum_proc_time : 4855
+workload       : KESCO B7 HITS
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 2 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  603.795 ms
+task DFG construction:     0.01551 ms
+task levelization:         0.00687 ms
+task assignment:           0.042781 ms
+resource allocation:       0.126011 ms
+gpu_submit_wait_ms:        166.574 ms
+gpu_kernel_ms:             166.459 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-e630.qdstrm'
+[1/1] [0%                          ] hits_existing_method.nsys-rep[1/1] [0%                          ] hits_existing_method.nsys-rep[1/1] [5%                          ] hits_existing_method.nsys-rep[1/1] [=========45%                ] hits_existing_method.nsys-rep[1/1] [===========51%              ] hits_existing_method.nsys-rep[1/1] [=============58%            ] hits_existing_method.nsys-rep[1/1] [========================100%] hits_existing_method.nsys-rep[1/1] [========================100%] hits_existing_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/hits_existing_method.nsys-rep

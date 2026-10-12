@@ -34,8 +34,8 @@ mkdir -p "$NSYS_RESULT_DIR"
 # Evaluation settings
 # ============================================================
 
-RUNS=12
-WARMUP_RUNS=2
+RUNS=33
+WARMUP_RUNS=3
 
 
 # ============================================================
@@ -101,9 +101,9 @@ echo
 # ============================================================
 # Execution time measurement
 #
-# 12 runs
-# First 2 runs = warmup
-# Average of remaining 10 runs
+# 33 runs
+# First 3 runs = warmup
+# Average of remaining 30 runs
 # ============================================================
 
 measure_average() {
@@ -470,9 +470,9 @@ for stg in "${STGS[@]}"; do
   # ==========================================================
   # Sequential
   #
-  # 12 runs
-  # 2 warmup
-  # 10-run average
+  # 33 runs
+  # 3 warmup
+  # 30-run average
   # ==========================================================
 
   sequential_time=$(
@@ -486,9 +486,9 @@ for stg in "${STGS[@]}"; do
   # ==========================================================
   # EM-GC
   #
-  # 12 runs
-  # 2 warmup
-  # 10-run average
+  # 33 runs
+  # 3 warmup
+  # 30-run average
   # ==========================================================
 
   emgc_time=$(

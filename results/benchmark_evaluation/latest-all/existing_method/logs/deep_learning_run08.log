@@ -3,16 +3,17 @@ num_tasks     : 8
 light_tasks   : 5
 heavy_tasks   : 3
 sum_proc_time : 786
+workload       : KESCO B10 Deep Learning
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 2 streams, no Green Context
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  305.563 ms
-task DFG construction:     0.0028 ms
-task levelization:         0.00116 ms
-task assignment:           0.01295 ms
-resource allocation:       0.128601 ms
-gpu_submit_wait_ms:        3.42577 ms
-gpu_kernel_ms:             3.2832 ms
+total_ms:                  475.526 ms
+task DFG construction:     0.00594 ms
+task levelization:         0.00297 ms
+task assignment:           0.0197 ms
+resource allocation:       0.14021 ms
+gpu_submit_wait_ms:        199.5 ms
+gpu_kernel_ms:             199.36 ms
 ==================================

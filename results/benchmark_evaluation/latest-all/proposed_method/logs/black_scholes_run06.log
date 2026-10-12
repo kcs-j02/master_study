@@ -3,6 +3,7 @@ num_tasks     : 10
 light_tasks   : 6
 heavy_tasks   : 4
 sum_proc_time : 17683
+workload       : KESCO B5 Black-Scholes
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 
@@ -46,23 +47,23 @@ estimated reduction: 38.6869 %
 [GC setup] selected SM allocation: 34 / 32 / 24 / 24
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=34, stream=0x5638d267ea40, green_ctx=0
-stream[1] [GC] SM=32, stream=0x5638d262d680, green_ctx=0x5638d262df90
-stream[2] [GC] SM=24, stream=0x5638d2670e30, green_ctx=0x5638d2666430
-stream[3] [GC] SM=24, stream=0x5638d267e8e0, green_ctx=0x5638d2673e60
+stream[0] [normal] SM=34, stream=0x562bac1d09b0, green_ctx=0
+stream[1] [GC] SM=32, stream=0x562bac1aa030, green_ctx=0x562bac1aa940
+stream[2] [GC] SM=24, stream=0x562bac1c2e20, green_ctx=0x562bac1b8420
+stream[3] [GC] SM=24, stream=0x562bac1d0850, green_ctx=0x562bac1c5e50
 =============================================
 [normal launch] task=6, SM=34, blocks=64, threads/block=256
 [normal launch] task=4, SM=34, blocks=64, threads/block=256
 [normal launch] task=5, SM=34, blocks=64, threads/block=256
 [GC last task completed] stream=3, task=8
-[GC released] stream[3], returned SM=24, current normal SM=58
-[GC last task completed] stream=1, task=2
-[GC released] stream[1], returned SM=32, current normal SM=90
 [GC last task completed] stream=2, task=3
-[GC released] stream[2], returned SM=24, current normal SM=114
+[GC released] stream[3], returned SM=24, current normal SM=58
+[GC released] stream[2], returned SM=24, current normal SM=82
+[GC last task completed] stream=1, task=2
+[GC released] stream[1], returned SM=32, current normal SM=114
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x5638d267ea40, green_ctx=0
+stream[0] [normal] SM=114, stream=0x562bac1d09b0, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream[2] [GC] SM=0, stream=0, green_ctx=0
 stream[3] [GC] SM=0, stream=0, green_ctx=0
@@ -72,19 +73,19 @@ stream[3] [GC] SM=0, stream=0, green_ctx=0
 stream comparison CSV: stream_plots/black_scholes_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000065751 s
-stage_2_task_importance_seconds: 0.000005170 s
-stage_3_stream_placement_seconds: 0.000022970 s
-stage_4_sm_allocation_seconds: 0.000248852 s
-stage_5_green_context_execution_seconds: 0.026908686 s
+stage_1_stg_analysis_seconds: 0.000120230 s
+stage_2_task_importance_seconds: 0.000004420 s
+stage_3_stream_placement_seconds: 0.000024080 s
+stage_4_sm_allocation_seconds: 0.000243771 s
+stage_5_green_context_execution_seconds: 0.010241420 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  289.025 ms
-stage 1 STG analysis:      0.065751 ms
-stage 2 task importance:   0.00517 ms
-stage 3 stream placement:  0.02297 ms
-stage 4 SM allocation:     0.248852 ms
-stage 5 GC execution:      26.9087 ms
-gpu_submit_wait_ms:        25.4467 ms
-gpu_kernel_ms:             25.1653 ms
+total_ms:                  280.958 ms
+stage 1 STG analysis:      0.12023 ms
+stage 2 task importance:   0.00442 ms
+stage 3 stream placement:  0.02408 ms
+stage 4 SM allocation:     0.243771 ms
+stage 5 GC execution:      10.2414 ms
+gpu_submit_wait_ms:        2.39806 ms
+gpu_kernel_ms:             2.10803 ms
 ==================================

@@ -3,16 +3,17 @@ num_tasks     : 11
 light_tasks   : 6
 heavy_tasks   : 5
 sum_proc_time : 254
+workload       : KESCO B8 Image Processing
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 3 streams, no Green Context
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  290.328 ms
-task DFG construction:     0.00358 ms
-task levelization:         0.00133 ms
-task assignment:           0.01409 ms
-resource allocation:       0.12673 ms
-gpu_submit_wait_ms:        1.55095 ms
-gpu_kernel_ms:             1.33232 ms
+total_ms:                  340.161 ms
+task DFG construction:     0.00267 ms
+task levelization:         0.00153 ms
+task assignment:           0.01465 ms
+resource allocation:       0.13496 ms
+gpu_submit_wait_ms:        67.6058 ms
+gpu_kernel_ms:             67.4377 ms
 ==================================

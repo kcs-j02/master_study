@@ -1,12 +1,12 @@
-benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,note
-vector_square,existing_method_green_context,ok,12,2,11.797350,11.532400,12.099000,shared task-graph benchmark input
-black_scholes,existing_method_green_context,ok,12,2,22.355830,22.196300,22.619100,shared task-graph benchmark input
-machine_learning,existing_method_green_context,ok,12,2,2.980932,2.506320,3.155650,shared task-graph benchmark input
-hits,existing_method_green_context,ok,12,2,9.529126,9.231530,9.684740,shared task-graph benchmark input
-image_processing,existing_method_green_context,ok,12,2,1.645101,1.431810,1.892260,shared task-graph benchmark input
-deep_learning,existing_method_green_context,ok,12,2,3.393420,3.101820,3.677280,shared task-graph benchmark input
-synthetic_fully_parallel,existing_method_green_context,ok,12,2,114.573600,114.348000,114.825000,shared task-graph benchmark input
-synthetic_mixed_chain_parallel,existing_method_green_context,ok,12,2,355.027300,354.732000,355.391000,shared task-graph benchmark input
-synthetic_multiple_long_branches,existing_method_green_context,ok,12,2,132.417800,132.031000,132.975000,shared task-graph benchmark input
-synthetic_random_dag,existing_method_green_context,ok,12,2,272.411900,272.103000,272.779000,shared task-graph benchmark input
-synthetic_sequential_chain,existing_method_green_context,ok,12,2,393.139900,392.675000,393.547000,shared task-graph benchmark input
+benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,median_gpu_submit_wait_ms,stddev_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,note
+vector_square,existing_method_green_context,ok,33,3,68.938967,68.817800,69.075000,68.933850,0.077669,0.029002,shared task-graph benchmark input
+black_scholes,existing_method_green_context,ok,33,3,2.722910,2.551460,2.919860,2.731590,0.106040,0.039596,shared task-graph benchmark input
+machine_learning,existing_method_green_context,ok,33,3,480.289300,477.419000,483.575000,480.298500,1.436958,0.536568,shared task-graph benchmark input
+hits,existing_method_green_context,ok,33,3,167.996800,161.714000,182.999000,166.929500,5.248587,1.959852,shared task-graph benchmark input
+image_processing,existing_method_green_context,ok,33,3,65.854577,63.827600,71.806300,65.082900,2.183824,0.815452,shared task-graph benchmark input
+deep_learning,existing_method_green_context,ok,33,3,126.812367,121.370000,199.756000,121.590500,19.826413,7.403296,shared task-graph benchmark input
+synthetic_fully_parallel,existing_method_green_context,ok,33,3,116.395900,115.789000,117.612000,116.111000,0.570398,0.212990,shared task-graph benchmark input
+synthetic_mixed_chain_parallel,existing_method_green_context,ok,33,3,358.787200,358.261000,359.960000,358.715500,0.417694,0.155969,shared task-graph benchmark input
+synthetic_multiple_long_branches,existing_method_green_context,ok,33,3,134.824800,134.025000,136.097000,134.848000,0.473922,0.176965,shared task-graph benchmark input
+synthetic_random_dag,existing_method_green_context,ok,33,3,275.420733,274.970000,276.603000,275.340500,0.347977,0.129937,shared task-graph benchmark input
+synthetic_sequential_chain,existing_method_green_context,ok,33,3,397.217833,396.590000,398.302000,397.126500,0.439898,0.164260,shared task-graph benchmark input

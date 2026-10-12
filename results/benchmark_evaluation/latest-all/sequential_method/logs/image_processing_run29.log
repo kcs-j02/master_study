@@ -1,0 +1,18 @@
+===== STG summary =====
+num_tasks     : 11
+light_tasks   : 6
+heavy_tasks   : 5
+sum_proc_time : 254
+workload       : KESCO B8 Image Processing
+task_grid      : 64 blocks
+task_SM_limit  : 64 SM
+mode: sequential
+========== Bench Result ==========
+total_ms:                  344.616 ms
+task DFG construction:     0 ms
+task levelization:         0.00439 ms
+task assignment:           0 ms
+resource allocation:       264.891 ms
+gpu_submit_wait_ms:        78.0207 ms
+gpu_kernel_ms:             78.0053 ms
+==================================

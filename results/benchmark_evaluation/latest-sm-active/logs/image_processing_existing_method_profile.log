@@ -1,0 +1,25 @@
+===== STG summary =====
+num_tasks     : 11
+light_tasks   : 6
+heavy_tasks   : 5
+sum_proc_time : 254
+workload       : KESCO B8 Image Processing
+task_grid     : 64 blocks
+task_SM_limit : 64 SM
+[normal stream setup] 3 streams, no Green Context
+mode: existing_method
+========== Bench Result ==========
+total_ms:                  501.19 ms
+task DFG construction:     0.00379 ms
+task levelization:         0.00264 ms
+task assignment:           0.02058 ms
+resource allocation:       0.12244 ms
+gpu_submit_wait_ms:        64.071 ms
+gpu_kernel_ms:             63.9297 ms
+==================================
+GPU 0: General Metrics for NVIDIA GH100
+Collecting data...
+Generating '/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/tmp/nsys-report-c495.qdstrm'
+[1/1] [0%                          ] image_processing_existing_method.nsys-rep[1/1] [0%                          ] image_processing_existing_method.nsys-rep[1/1] [=========43%                ] image_processing_existing_method.nsys-rep[1/1] [===========50%              ] image_processing_existing_method.nsys-rep[1/1] [=============58%            ] image_processing_existing_method.nsys-rep[1/1] [========================100%] image_processing_existing_method.nsys-rep[1/1] [========================100%] image_processing_existing_method.nsys-rep
+Generated:
+	/home/kobayashi/main/master_study/results/benchmark_evaluation/latest-sm-active/reports/image_processing_existing_method.nsys-rep

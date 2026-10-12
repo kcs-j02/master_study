@@ -3,6 +3,7 @@ num_tasks     : 11
 light_tasks   : 6
 heavy_tasks   : 5
 sum_proc_time : 254
+workload       : KESCO B8 Image Processing
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 ===== Existing method + even GC partition =====
@@ -33,12 +34,12 @@ stream 0 tasks       : 3
 stream 0 busy        : 202
 stream 0 span        : 202
 stream 0 density     : 1
-[GC setup time] 0.258412 ms
+[GC setup time] 0.263021 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x559451f6ed50, green_ctx=0x559451f1e6e0, has_stream=1, has_gc=1, SM=40
-stream[1] [GC] stream_ptr=0x559451f6eeb0, green_ctx=0x559451f56a00, has_stream=1, has_gc=1, SM=40
-stream[2] [GC] stream_ptr=0x559451f6f010, green_ctx=0x559451f61400, has_stream=1, has_gc=1, SM=32
+stream[0] [GC] stream_ptr=0x561fbbdd40c0, green_ctx=0x561fbbdae790, has_stream=1, has_gc=1, SM=40
+stream[1] [GC] stream_ptr=0x561fbbdd4220, green_ctx=0x561fbbdbbeb0, has_stream=1, has_gc=1, SM=40
+stream[2] [GC] stream_ptr=0x561fbbdd4380, green_ctx=0x561fbbdc68b0, has_stream=1, has_gc=1, SM=32
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -52,11 +53,11 @@ stream[2] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 [CHECK] all GC streams released
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  290.574 ms
-task DFG construction:     0.00316 ms
-task levelization:         0.00169 ms
-task assignment:           0.01848 ms
-resource allocation:       0.272512 ms
-gpu_submit_wait_ms:        1.89226 ms
-gpu_kernel_ms:             1.68829 ms
+total_ms:                  344.577 ms
+task DFG construction:     0.00259 ms
+task levelization:         0.00175 ms
+task assignment:           0.01564 ms
+resource allocation:       0.280021 ms
+gpu_submit_wait_ms:        64.9172 ms
+gpu_kernel_ms:             64.7793 ms
 ==================================

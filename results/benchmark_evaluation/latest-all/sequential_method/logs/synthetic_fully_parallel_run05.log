@@ -3,15 +3,16 @@ num_tasks     : 352
 light_tasks   : 352
 heavy_tasks   : 0
 sum_proc_time : 297500
+workload       : synthetic LIGHT/HEAVY
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  697.993 ms
+total_ms:                  662.489 ms
 task DFG construction:     0 ms
-task levelization:         0.13436 ms
+task levelization:         0.151631 ms
 task assignment:           0 ms
-resource allocation:       306.479 ms
-gpu_submit_wait_ms:        391.267 ms
-gpu_kernel_ms:             391.253 ms
+resource allocation:       266.949 ms
+gpu_submit_wait_ms:        395.241 ms
+gpu_kernel_ms:             395.217 ms
 ==================================

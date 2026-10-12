@@ -3,6 +3,7 @@ num_tasks     : 10
 light_tasks   : 6
 heavy_tasks   : 4
 sum_proc_time : 17683
+workload       : KESCO B5 Black-Scholes
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 ===== Existing method + even GC partition =====
@@ -39,14 +40,14 @@ stream 0 tasks       : 2
 stream 0 busy        : 3551
 stream 0 span        : 3551
 stream 0 density     : 1
-[GC setup time] 0.476684 ms
+[GC setup time] 0.507312 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x558c9eb7d310, green_ctx=0x558c9eb148a0, has_stream=1, has_gc=1, SM=24
-stream[1] [GC] stream_ptr=0x558c9eb7d470, green_ctx=0x558c9eb4cbf0, has_stream=1, has_gc=1, SM=24
-stream[2] [GC] stream_ptr=0x558c9eb7d5d0, green_ctx=0x558c9eb575f0, has_stream=1, has_gc=1, SM=24
-stream[3] [GC] stream_ptr=0x558c9eb7d730, green_ctx=0x558c9eb64f40, has_stream=1, has_gc=1, SM=24
-stream[4] [GC] stream_ptr=0x558c9eb80760, green_ctx=0x558c9eb6f9c0, has_stream=1, has_gc=1, SM=16
+stream[0] [GC] stream_ptr=0x55dd5a3dfb70, green_ctx=0x55dd5a3a1b30, has_stream=1, has_gc=1, SM=24
+stream[1] [GC] stream_ptr=0x55dd5a3dfcd0, green_ctx=0x55dd5a3af4d0, has_stream=1, has_gc=1, SM=24
+stream[2] [GC] stream_ptr=0x55dd5a3dfe30, green_ctx=0x55dd5a3b9ed0, has_stream=1, has_gc=1, SM=24
+stream[3] [GC] stream_ptr=0x55dd5a3dff90, green_ctx=0x55dd5a3c77a0, has_stream=1, has_gc=1, SM=24
+stream[4] [GC] stream_ptr=0x55dd5a3e2fc0, green_ctx=0x55dd5a3d2220, has_stream=1, has_gc=1, SM=16
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -64,11 +65,11 @@ stream[4] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 [CHECK] all GC streams released
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  330.414 ms
-task DFG construction:     0.00169 ms
-task levelization:         0.0005 ms
-task assignment:           0.01374 ms
-resource allocation:       0.491504 ms
-gpu_submit_wait_ms:        22.2136 ms
-gpu_kernel_ms:             21.9341 ms
+total_ms:                  280.682 ms
+task DFG construction:     0.00506 ms
+task levelization:         0.00047 ms
+task assignment:           0.01367 ms
+resource allocation:       0.524142 ms
+gpu_submit_wait_ms:        2.75784 ms
+gpu_kernel_ms:             2.57482 ms
 ==================================
