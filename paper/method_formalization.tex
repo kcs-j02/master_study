@@ -1,0 +1,129 @@
+% This fragment describes the implemented method. It is intentionally kept
+% separate from the source tree so that it can be included in the thesis.
+\section{提案手法の定式化}
+\label{sec:method-formulation}
+
+\subsection{問題設定}
+入力をStatic Task Graph (STG)として表す有向非巡回グラフ
+$G=(V,E)$とする。タスク$i\in V$の処理時間を$p_i$、先行タスク集合を
+$P_i$、後続タスク集合を$S_i$とする。使用可能なCUDA Stream数を$K$、
+GPU全体のSM数を$M$とする。本実装では$K\leq 5$および$M=114$である。
+
+本研究の実行構成は、タスクのStream割当$\sigma:V\rightarrow
+\{0,\ldots,K-1\}$と、各StreamへのSM割当
+$\boldsymbol{x}=(x_0,\ldots,x_{K-1})$で表す。SM割当は
+\[
+  x_s \geq 1,\qquad
+  \sum_{s=0}^{K-1}x_s\leq M
+\]
+を満たす。本実装でGreen Contextを使用する場合、$x_s$はGPUが許す
+SM partition粒度にも従う。
+
+\subsection{タスク重要度}
+タスク$i$のbottom level（下流重要度）$b_i$を次式で定義する。
+\[
+ b_i =
+ \begin{cases}
+ p_i, & S_i=\varnothing,\\
+ p_i+\displaystyle\max_{j\in S_i}b_j, & \text{otherwise}.
+ \end{cases}
+\]
+依存関係を満たすready listから、$b_i$が最大のタスクを選択する。
+同値の場合は$p_i$が大きいタスク、さらに同値の場合はタスクIDが小さい
+タスクを選択する。この値はタスクの優先順位付けに使用し、SM数による
+処理時間補正はStream割当後のStage 4で行う。
+
+\subsection{Stream割当}
+タスク$i$をStream$s$へ割り当てたときの依存関係上のready時刻を
+\[
+ r_i=\max_{j\in P_i}f_j
+\]
+とする。$P_i=\varnothing$の場合は$r_i=0$とする。Stream$s$上の既配置
+区間を考慮し、タスクを挿入できる最早開始時刻を
+$e(i,s)$と定義する。実装では既配置区間の間隙も探索する。
+終了予測時刻は
+\[
+ f(i,s)=e(i,s)+p_i
+\]
+であり、タスク$i$は
+\[
+ \sigma(i)=\mathop{\arg\min}_{s\in\{0,\ldots,K-1\}} f(i,s)
+\]
+へ割り当てる。値が一致する場合は開始時刻、Stream IDの順に
+小さい候補を選ぶ。この手続きはbottom level順のready-listスケジューラ
+として実装されている。
+
+\subsection{SM数を考慮した処理時間モデル}
+Stream$s$に割り当てたタスク$i$の予測処理時間を
+$\widehat{p}_i(x_s)$とする。KESCO由来タスクでは、SM数ごとの実測
+カーネル時間を線形補間し、64 SM以上では64 SMの値で飽和させる。
+合成STGではblock-passモデルを用いる。
+\[
+ \widehat{p}_i(x_s)=
+ p_i\frac{q_i(x_s)}{q_i(x_{\rm ref})},
+\]
+ここで$q_i(x)$はSM数$x$におけるblock pass数、$x_{\rm ref}$は
+処理時間の基準SM数である。実測プロファイルが存在するタスクでは、
+この式の代わりにプロファイル値を使用する。
+
+\subsection{SM配分の目的関数}
+固定したStream割当$\sigma$とSM配分$\boldsymbol{x}$に対し、
+各Streamの予測負荷を
+\[
+ L_s(\boldsymbol{x},\sigma)
+ =\sum_{i\in V:\sigma(i)=s}\widehat{p}_i(x_s)
+\]
+と定義する。Stage 4は次の近似目的関数を最小化する。
+\[
+ \min_{\boldsymbol{x}}\quad
+ \widehat{C}(\boldsymbol{x},\sigma)
+ =\max_{s}L_s(\boldsymbol{x},\sigma).
+\]
+実装ではSMを8 SM単位のチャンクとして候補を列挙し、初期配分と
+余剰配分の2段階でこの目的関数を評価する。目的関数が同値の場合は
+配分チャンクの二乗偏差が小さい構成を選択する。
+
+\subsection{実行時makespanと予測makespanの区別}
+上記の$\widehat{C}$はStreamごとの処理時間合計に基づく予測値であり、
+依存関係による待ち時間、CUDAランタイムの起動遅延、Green Contextの
+解放タイミングを完全には表さない。論文で報告する性能値は、実行時の
+最初のタスク開始から最後のタスク終了までをCUDA Eventで測定した
+$C_{\rm GPU}$と、CPU側のsubmit・待機・同期を含む
+$C_{\rm host}$を区別する。
+\[
+ C_{\rm host}
+ = C_{\rm GPU}+C_{\rm runtime},
+\]
+ここで$C_{\rm runtime}$にはタスク投入、Taskflow待機、資源解放、
+および同期のオーバーヘッドが含まれる。したがって、
+$\widehat{C}$を実測makespanそのものとして解釈してはならない。
+
+\subsection{計算量}
+タスク数を$n=|V|$、エッジ数を$m=|E|$、Stream数を$K$とする。
+グラフ構築とbottom level計算は、実装のlevel化ループを含めると
+$O(nL+m)$（$L$はグラフのlevel数）であり、上界は$O(n^2+m)$である。
+Stream割当はready-listの線形探索、各Streamの区間探索を行うため、
+実装上の保守的な上界は$O(n^2K+n^2)$である。ここで$K$は最大5に
+固定されている。
+
+SM配分で$r$個の8-SMチャンクを$K$個のStreamへ配分する候補数は
+\[
+ {r+K-1\choose K-1}
+\]
+である。実装は初期配分と余剰配分についてこの候補を全探索するため、
+配分評価を$O(nK)$とすると、SM配分の計算量は
+\[
+ O\left(nK{r_1+K-1\choose K-1}
+       +nK{r_2+K-1\choose K-1}\right)
+\]
+となる。本研究では$K\leq5$かつGPUごとのSM数を固定しているため、
+実験対象ではこの探索をオフラインの構成選択として実行可能である。
+
+\subsection{手法の位置付けと限界}
+本手法は、Stream割当とSM配分を同時に解く厳密最適化ではなく、
+(1)重要度に基づくStream割当、(2)固定された割当に対するSM配分、
+という二段階ヒューリスティックである。また、SM配分の予測モデルは
+測定GPU・固定入力に依存する。したがって、実験では実測GPU時間、
+複数のグラフ構造、アブレーション、およびスケジューリング
+オーバーヘッドを併記し、一般のGPU・入力サイズへの無条件の一般化は
+行わない。

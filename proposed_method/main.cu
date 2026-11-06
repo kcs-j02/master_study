@@ -231,12 +231,19 @@ void print_configuration(
 ) {
   const int stream_count =
       static_cast<int>(decision.sm_counts.size());
+  const bool uses_measured_ms =
+      !tasks.empty() &&
+      tasks.front().benchmark_kind != stg::BenchmarkKind::SYNTHETIC;
 
   double sequential_estimated_time = 0.0;
 
   for (const auto& task : tasks) {
     sequential_estimated_time +=
-        static_cast<double>(std::max(0, task.proc_time));
+        estimate_task_proc_time_on_stream(
+            task,
+            kSchedulingReferenceSmCount,
+            kSchedulingReferenceSmCount
+        );
   }
 
   const double estimated_speedup =
@@ -258,6 +265,9 @@ void print_configuration(
       << "stream_count       : " << stream_count << '\n'
       << "selected SM        : "
       << format_sm_counts(decision.sm_counts) << '\n'
+      << "prediction unit    : "
+      << (uses_measured_ms ? "ms (offline profile)" : "synthetic proc_time units")
+      << '\n'
       << "estimated makespan : "
       << decision.estimated_makespan << '\n'
       << "sequential estimate: "
@@ -338,7 +348,8 @@ void print_processing_times_for_each_stream_count(
 ) {
   std::cout
       << "===== Processing times for each stream count =====\n"
-      << "task time = raw proc_time * measured block-pass multiplier\n"
+      << "task time = KESCO measured per-kernel curve [ms]; "
+         "synthetic raw proc_time * block-pass multiplier\n"
       << "initial SM: 1=114, 2=56, 3=32, 4=24, 5=16\n";
 
   const std::streamsize previous_precision =

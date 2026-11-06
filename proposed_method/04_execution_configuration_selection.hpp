@@ -5,13 +5,16 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <queue>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "00_pipeline_configuration.hpp"
 #include "03_stream_scheduling.hpp"
+#include "04_kesco_sm_time_model.hpp"
 
 /*
  * Stage 4: Stage 3で確定したタスク配置にSMを配分する。
@@ -25,9 +28,12 @@
 /*
  * SM数を考慮したタスクの予測実行時間。
  *
- * proc_timeの基準と1タスクのSM上限は実測に基づき64 SMとする。
- * 64 SM未満では実行カーネルと同じblock/thread構成から、1 threadが
- * 担当する要素数（処理pass数）を求める。
+ * KESCO由来タスクは、固定入力を8 SM刻みで実測したカーネル別の
+ * median時間を使用する。測定点の間は線形補間し、64 SM以上は
+ * 64 SMの値で飽和させる。
+ *
+ * 合成STGには対応する実測プロファイルがないため、従来どおり
+ * proc_timeとblock-pass倍率を使用する。
  */
 inline double estimate_task_proc_time_on_stream(
     const TaskSpec& task,
@@ -50,6 +56,11 @@ inline double estimate_task_proc_time_on_stream(
     throw std::logic_error(
         "kProcTimeReferenceSmCount must be positive"
     );
+  }
+
+  if (const auto measured_ms =
+          kesco_sm_time_model::estimate_ms(task, stream_sm_count)) {
+    return *measured_ms;
   }
 
   const double base_proc_time =
@@ -176,20 +187,102 @@ inline double estimate_stream_load_makespan(
     );
   }
 
-  double makespan = 0.0;
+  std::unordered_map<int, const TaskSpec*> task_by_id;
+  std::unordered_map<int, std::vector<int>> successors;
+  std::unordered_map<int, int> remaining_predecessors;
+  task_by_id.reserve(tasks.size());
+  successors.reserve(tasks.size());
+  remaining_predecessors.reserve(tasks.size());
 
-  for (std::size_t stream_id = 0;
-       stream_id < stream_sm_counts.size();
-       ++stream_id) {
-    makespan = std::max(
-        makespan,
-        estimate_stream_processing_time_sum(
-            tasks,
-            placement,
-            stream_sm_counts,
-            static_cast<int>(stream_id)
-        )
+  for (const auto& task : tasks) {
+    if (!task_by_id.emplace(task.id, &task).second) {
+      throw std::invalid_argument(
+          "duplicate task id: " + std::to_string(task.id)
+      );
+    }
+    successors.emplace(task.id, std::vector<int>{});
+    remaining_predecessors.emplace(
+        task.id,
+        static_cast<int>(task.preds.size())
     );
+  }
+
+  std::priority_queue<
+      int,
+      std::vector<int>,
+      std::greater<int>
+  > ready_tasks;
+
+  for (const auto& task : tasks) {
+    for (const int predecessor_id : task.preds) {
+      if (task_by_id.find(predecessor_id) == task_by_id.end()) {
+        throw std::invalid_argument(
+            "unknown predecessor: " + std::to_string(predecessor_id)
+        );
+      }
+      successors.at(predecessor_id).push_back(task.id);
+    }
+    if (task.preds.empty()) {
+      ready_tasks.push(task.id);
+    }
+  }
+
+  std::vector<double> stream_finish_time(stream_sm_counts.size(), 0.0);
+  std::unordered_map<int, double> task_finish_time;
+  task_finish_time.reserve(tasks.size());
+  double makespan = 0.0;
+  std::size_t scheduled_count = 0;
+
+  while (!ready_tasks.empty()) {
+    const int task_id = ready_tasks.top();
+    ready_tasks.pop();
+    const TaskSpec& task = *task_by_id.at(task_id);
+    const int stream_id = placement.task_stream.at(task_id);
+
+    if (stream_id < 0 ||
+        stream_id >= static_cast<int>(stream_sm_counts.size())) {
+      throw std::invalid_argument(
+          "task has an invalid stream assignment: " +
+          std::to_string(task_id)
+      );
+    }
+
+    double predecessor_ready_time = 0.0;
+    for (const int predecessor_id : task.preds) {
+      predecessor_ready_time = std::max(
+          predecessor_ready_time,
+          task_finish_time.at(predecessor_id)
+      );
+    }
+
+    const double start_time = std::max(
+        stream_finish_time.at(static_cast<std::size_t>(stream_id)),
+        predecessor_ready_time
+    );
+    const double finish_time = start_time +
+        estimate_task_proc_time_on_stream(
+            task,
+            stream_sm_counts.at(static_cast<std::size_t>(stream_id)),
+            kSchedulingReferenceSmCount
+        );
+
+    stream_finish_time.at(static_cast<std::size_t>(stream_id)) =
+        finish_time;
+    task_finish_time.emplace(task_id, finish_time);
+    makespan = std::max(makespan, finish_time);
+    ++scheduled_count;
+
+    for (const int successor_id : successors.at(task_id)) {
+      int& remaining = remaining_predecessors.at(successor_id);
+      --remaining;
+      if (remaining == 0) {
+        ready_tasks.push(successor_id);
+      }
+    }
+  }
+
+  if (scheduled_count != tasks.size()) {
+    throw std::invalid_argument("task graph contains a cycle");
   }
 
   return makespan;

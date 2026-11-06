@@ -6,13 +6,17 @@ sum_proc_time : 4855
 workload       : KESCO B7 HITS
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: PASS
+validation_checks: 20
+validation_max_abs_error: 4.52995e-06
+validation_detail: deterministic reference samples and pipeline invariants
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  612.38 ms
+total_ms:                  612.292 ms
 task DFG construction:     0 ms
-task levelization:         0.00731 ms
+task levelization:         0.00796 ms
 task assignment:           0 ms
-resource allocation:       292.487 ms
-gpu_submit_wait_ms:        318.081 ms
-gpu_kernel_ms:             318.064 ms
+resource allocation:       282.592 ms
+gpu_submit_wait_ms:        317.559 ms
+gpu_kernel_ms:             317.543 ms
 ==================================

@@ -407,6 +407,14 @@ struct Workspace {
   int aux = 0;
 };
 
+struct ValidationResult {
+  bool applicable = false;
+  bool passed = true;
+  std::size_t checks = 0;
+  double max_abs_error = 0.0;
+  std::string detail = "synthetic workload has no application reference result";
+};
+
 template <typename T>
 inline T* allocate(Workspace& workspace, std::size_t count) {
   T* pointer = nullptr;
@@ -506,6 +514,13 @@ inline Workspace create_workspace(BenchmarkKind kind) {
     initialize(w.f[0], input, 0.01f); initialize(w.f[1], input, 0.02f);
     initialize(w.f[8], channels * k * k * c1, 0.001f); initialize(w.f[9], c1 * k * k * c2, 0.001f);
     initialize(w.f[10], channels * k * k * c1, 0.002f); initialize(w.f[11], c1 * k * k * c2, 0.002f);
+    // Some convolution/pooling boundary cells are intentionally not written.
+    // Define them as zero before downstream kernels consume the full buffers.
+    for (int j = 2; j <= 7; ++j) {
+      const std::size_t count = (j <= 3) ? layer1 : (j <= 5 ? pooled : layer2);
+      CUDA_CHECK(cudaMemset(w.f[j], 0, count * sizeof(float)));
+    }
+    CUDA_CHECK(cudaMemset(w.f[12], 0, layer2 * 2 * sizeof(float)));
     initialize(w.f[13], layer2 * 2, 0.0001f); CUDA_CHECK(cudaMemset(w.f[14], 0, sizeof(float)));
   }
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -583,6 +598,171 @@ inline void launch(const TaskSpec& task, Workspace& w, cudaStream_t stream) {
     case BenchmarkKind::SYNTHETIC: throw std::logic_error("synthetic task sent to KESCO launcher");
   }
   CUDA_CHECK(cudaGetLastError());
+}
+
+template <typename T>
+inline T copy_element(const T* device, std::size_t index) {
+  T value{};
+  CUDA_CHECK(cudaMemcpy(&value, device + index, sizeof(T), cudaMemcpyDeviceToHost));
+  return value;
+}
+
+inline void validation_close(ValidationResult& result,
+                             double actual,
+                             double expected,
+                             double absolute_tolerance,
+                             double relative_tolerance) {
+  ++result.checks;
+  const double error = std::fabs(actual - expected);
+  result.max_abs_error = std::max(result.max_abs_error, error);
+  const double limit = absolute_tolerance + relative_tolerance * std::fabs(expected);
+  if (!std::isfinite(actual) || error > limit) result.passed = false;
+}
+
+inline void validation_true(ValidationResult& result, bool condition) {
+  ++result.checks;
+  if (!condition) result.passed = false;
+}
+
+inline double black_scholes_reference(double x) {
+  constexpr double r = 0.08;
+  constexpr double v = 0.3;
+  constexpr double t = 1.0;
+  constexpr double strike = 60.0;
+  auto normal = [](double d) {
+    constexpr double a1 = 0.31938153;
+    constexpr double a2 = -0.356563782;
+    constexpr double a3 = 1.781477937;
+    constexpr double a4 = -1.821255978;
+    constexpr double a5 = 1.330274429;
+    constexpr double inv_sqrt_2pi = 0.3989422804014327;
+    const double k = 1.0 / (1.0 + 0.2316419 * std::fabs(d));
+    const double cnd = inv_sqrt_2pi * std::exp(-0.5 * d * d) *
+        (k * (a1 + k * (a2 + k * (a3 + k * (a4 + k * a5)))));
+    return d > 0.0 ? 1.0 - cnd : cnd;
+  };
+  const double sqrt_t = std::sqrt(t);
+  const double d1 = (std::log(x / strike) + (r + 0.5 * v * v) * t) /
+      (v * sqrt_t);
+  const double d2 = d1 - v * sqrt_t;
+  return x * normal(d1) - strike * std::exp(-r * t) * normal(d2);
+}
+
+// Validation is deliberately outside the measured execution window.  The
+// inexpensive reference checks cover deterministic samples plus pipeline
+// invariants that use independently retained intermediate results.
+inline ValidationResult validate_workspace(Workspace& w) {
+  ValidationResult result;
+  if (const char* disabled = std::getenv("STG_DISABLE_RESULT_VALIDATION");
+      disabled != nullptr && std::string(disabled) == "1") {
+    result.detail = "disabled for external profiling";
+    return result;
+  }
+  if (w.kind == BenchmarkKind::SYNTHETIC) return result;
+
+  result.applicable = true;
+  result.detail = "deterministic reference samples and pipeline invariants";
+  const std::array<std::size_t, 6> sample = {
+      0, 1, 96, 97, static_cast<std::size_t>(w.n / 2),
+      static_cast<std::size_t>(w.n - 1)};
+
+  if (w.kind == BenchmarkKind::VECTOR_SQUARE) {
+    for (const std::size_t index : sample) {
+      const float x = static_cast<float>((index % 97) + 1) * 0.001f;
+      const float y = static_cast<float>((index % 97) + 1) * 0.002f;
+      validation_close(result, copy_element(w.f[2], index), x * x, 1e-7, 1e-6);
+      validation_close(result, copy_element(w.f[3], index), y * y, 1e-7, 1e-6);
+    }
+  } else if (w.kind == BenchmarkKind::BLACK_SCHOLES) {
+    for (int tile = 0; tile < 10; ++tile) {
+      for (const std::size_t index : sample) {
+        const double input = static_cast<double>((index % 97) + 1) * 0.8;
+        validation_close(result, copy_element(w.d[tile + 10], index),
+                         black_scholes_reference(input), 1e-10, 1e-10);
+      }
+    }
+  } else if (w.kind == BenchmarkKind::MACHINE_LEARNING) {
+    constexpr int classes = 10;
+    for (const std::size_t row : sample) {
+      std::array<float, classes> first{};
+      std::array<float, classes> second{};
+      CUDA_CHECK(cudaMemcpy(first.data(), w.f[6] + row * classes,
+                            sizeof(first), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(second.data(), w.f[7] + row * classes,
+                            sizeof(second), cudaMemcpyDeviceToHost));
+      double first_sum = 0.0, second_sum = 0.0;
+      int expected_class = 0;
+      double best = -std::numeric_limits<double>::infinity();
+      for (int klass = 0; klass < classes; ++klass) {
+        validation_true(result, std::isfinite(first[klass]) && first[klass] >= 0.0f && first[klass] <= 1.0f);
+        validation_true(result, std::isfinite(second[klass]) && second[klass] >= 0.0f && second[klass] <= 1.0f);
+        first_sum += first[klass]; second_sum += second[klass];
+        const double combined = first[klass] + second[klass];
+        if (combined > best) { best = combined; expected_class = klass; }
+      }
+      validation_close(result, first_sum, 1.0, 2e-5, 0.0);
+      validation_close(result, second_sum, 1.0, 2e-5, 0.0);
+      validation_true(result, copy_element(w.i[1], row) == expected_class);
+    }
+  } else if (w.kind == BenchmarkKind::HITS) {
+    // The reset task leaves these accumulators at zero; reuse them after the
+    // timed region to verify the normalization of the complete output arrays.
+    hits_sum<<<kBlocks,kThreads>>>(w.f[0], w.f[4], w.n);
+    hits_sum<<<kBlocks,kThreads>>>(w.f[2], w.f[5], w.n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    validation_close(result, copy_element(w.f[4], 0), 1.0, 2e-3, 0.0);
+    validation_close(result, copy_element(w.f[5], 0), 1.0, 2e-3, 0.0);
+    for (const std::size_t index : sample) {
+      const float authority = copy_element(w.f[0], index);
+      const float hub = copy_element(w.f[2], index);
+      validation_true(result, std::isfinite(authority) && authority >= 0.0f);
+      validation_true(result, std::isfinite(hub) && hub >= 0.0f);
+      validation_close(result, authority, hub, 1e-7, 1e-5);
+    }
+  } else if (w.kind == BenchmarkKind::IMAGE_PROCESSING) {
+    const std::size_t pixels = static_cast<std::size_t>(w.n) * w.n;
+    const std::array<std::size_t, 6> image_sample = {
+        0, 1, static_cast<std::size_t>(w.n + 1), pixels / 2,
+        pixels - w.n - 2, pixels - 1};
+    for (const std::size_t index : image_sample) {
+      const float input = copy_element(w.f[0], index);
+      const float blur_small = copy_element(w.f[4], index);
+      const float blur_large = copy_element(w.f[5], index);
+      const float blur_unsharp = copy_element(w.f[6], index);
+      const float sobel_small = copy_element(w.f[7], index);
+      const float mask = copy_element(w.f[8], index);
+      const float unsharp = copy_element(w.f[9], index);
+      const float combined = copy_element(w.f[1], index);
+      const float output = copy_element(w.f[2], index);
+      const float expected_unsharp = std::min(1.0f, std::max(0.0f, 1.5f * input - 0.5f * blur_unsharp));
+      const float expected_combined = expected_unsharp * mask + blur_large * (1.0f - mask);
+      const float expected_output = expected_combined * sobel_small + blur_small * (1.0f - sobel_small);
+      validation_true(result, std::isfinite(mask) && mask >= 0.0f && mask <= 1.0f);
+      validation_close(result, unsharp, expected_unsharp, 2e-6, 2e-6);
+      validation_close(result, combined, expected_combined, 2e-6, 2e-6);
+      validation_close(result, output, expected_output, 2e-6, 2e-6);
+    }
+  } else if (w.kind == BenchmarkKind::DEEP_LEARNING) {
+    const std::size_t layer = static_cast<std::size_t>(w.aux);
+    const std::array<std::size_t, 6> dl_sample = {0, 1, 16, layer / 2, layer - 2, layer - 1};
+    for (const std::size_t index : dl_sample) {
+      validation_close(result, copy_element(w.f[12], index),
+                       copy_element(w.f[6], index), 0.0, 0.0);
+      validation_close(result, copy_element(w.f[12], layer + index),
+                       copy_element(w.f[7], index), 0.0, 0.0);
+    }
+    validation_true(result, std::isfinite(copy_element(w.f[14], 0)));
+  }
+  return result;
+}
+
+inline void print_validation(const ValidationResult& result) {
+  std::cout << "validation_status: "
+            << (!result.applicable ? "NOT_APPLICABLE" : (result.passed ? "PASS" : "FAIL"))
+            << "\nvalidation_checks: " << result.checks
+            << "\nvalidation_max_abs_error: " << result.max_abs_error
+            << "\nvalidation_detail: " << result.detail << "\n";
 }
 
 }  // namespace stg::kesco

@@ -32,7 +32,7 @@
 
 ![合成STGの実行時間比較](results/method_comparison_figures/RESULT_stg/all_stg_execution_time_comparison.png)
 
-実アプリケーション由来ベンチマークでは、今回の測定条件において提案手法は既存手法を上回りませんでした。一方、合成STGでは、提案手法がMixed Chain + Parallelで253.35 ms、Sequential Chainで370.06 msとなり、4手法中で最短でした。Mixed Chain + Parallelでは既存手法の278.72 msに対して約9.1%、Sequential Chainでは既存手法の396.91 msに対して約6.8%短縮しています。Fully Parallel、Multiple Long Branches、Random DAGでは既存手法が最短であり、タスクグラフの構造によって有効なStream配置とSM配分が異なることが分かります。
+実アプリケーション由来ベンチマークでは、Image Processingで提案手法が最短でした。一方、Vector Square、Black-Scholes、Deep LearningではExistingが提案手法より短く、Machine LearningではSequentialが最短でした。HITSはExistingとProposedの数値検証がFAILしたため、性能比較の主張から除外します。合成STGでは、提案手法が5種類すべてで最短でした。Mixed Chain + Parallelは251.30 ms、Sequential Chainは367.33 msであり、GPU上の最初のタスク開始から最後のタスク終了までをCUDA Eventで測定した値です。
 
 ### SM使用率
 
@@ -40,25 +40,42 @@ SM使用率は、Nsight Systemsで取得した`SMs Active [%]`です。初期化
 
 #### 実アプリケーション由来ベンチマーク
 
-![実アプリケーション由来ベンチマークのSM使用率比較](results/benchmark_evaluation/latest-sm-active/kesco_sm_active_comparison.png)
+![実アプリケーション由来ベンチマークのSM使用率比較](results/method_comparison_figures/sm_utilization/kesco_sm_active_comparison.png)
 
 #### 合成STG
 
-![合成STGのSM使用率比較](results/benchmark_evaluation/latest-sm-active/stg_sm_active_comparison.png)
+![合成STGのSM使用率比較](results/method_comparison_figures/sm_utilization/stg_sm_active_comparison.png)
 
-合成STGのMixed Chain + Parallelでは、提案手法のSM使用率は74.0%であり、Existing + GCの28.6%を上回ると同時に、実行時間も短縮しました。また、Fully Parallel、Multiple Long Branches、Random DAGでも提案手法のSM使用率は90%以上ですが、実行時間は既存手法より長くなっています。この結果は、SM使用率の高さだけではmakespanを説明できず、重要な依存経路の進行、Stream間の負荷分散、SM配分を合わせて評価する必要があることを示しています。
+合成STGでは提案手法が最短となりましたが、SM使用率の高さだけでmakespanを説明することはできません。重要な依存経路の進行、Stream間の負荷分散、SM配分を合わせて評価する必要があります。
 
-元データは`results/benchmark_evaluation/latest-all/all_results.csv`と`results/benchmark_evaluation/latest-sm-active/sm_active_results.csv`にあります。これらの結果と図は評価スクリプトを再実行すると更新されます。
+元データは`results/benchmark_evaluation/latest-all/all_results.csv`、`results/method_comparison_figures/correctness_validation.csv`、`results/method_comparison_figures/sm_utilization/sm_active_results.csv`にあります。`status=validation_failed`の行は、正しい出力を確認できないため性能比較から除外します。これらの結果と図は評価スクリプトを再実行すると更新されます。
+
+### KESCO入力のSMスケーリング
+
+KESCO由来6入力について、Green Contextで割当SM数を8～112 SM（8 SM刻み）および114 SMへ変更し、ベンチマーク全体と個別CUDAカーネルの処理時間を測定します。各点は5回のウォームアップ後、21回のCUDA Event測定の中央値です。
+
+```bash
+cd /home/kobayashi/main/master_study/benchmarks/kesco_sm_scaling_benchmark
+./run.sh
+```
+
+結果は`results/method_comparison_figures/kesco_sm_scaling/`へCSVと折れ線グラフとして出力します。
+
+提案手法のStage 4では、KESCO由来タスクに対してこの測定のカーネル別median
+時間を使用します。8～64 SMの測定点を直接参照し、中間値は線形補間、64 SM
+以上は64 SM時間で飽和させます。合成STGは従来のblock-passモデルを維持します。
+実測モデルは現在の固定入力・64 block構成・測定GPU専用であり、別の入力サイズや
+GPUへ一般化するには再プロファイルが必要です。
 
 ## 考察
 
-提案手法は、長い依存チェーンと並列タスクが混在するMixed Chain + Parallelで最も効果を示しました。この構造では、重要な依存経路へSMを確保しながら、残りのSMで独立タスクを進める方針が機能したと考えられます。Existing + GCと比較してSM使用率が28.6%から74.0%へ向上し、実行時間も358.79 msから253.35 msへ短縮したことから、均等なSM配分よりもタスクの重要度とStreamの処理量を考慮した配分が有効なケースであるといえます。
+提案手法は、長い依存チェーンと並列タスクが混在する合成STGで有効でした。特にMixed Chain + Parallelでは251.30 msとなり、Existingの394.27 msより短くなりました。ただし、実アプリケーションでは同じ傾向は得られず、カーネル特性とDAG構造に依存します。
 
 Sequential Chainでも提案手法が最短でしたが、4手法のSM使用率は約55.7～55.9%でほぼ同じでした。この結果は、SM使用率を高めることだけでなく、依存関係に沿った実行順序やスケジューリングによる待ち時間の削減もmakespanに影響することを示しています。
 
-一方、Fully Parallel、Multiple Long Branches、Random DAGでは、提案手法のSM使用率が90%以上であっても既存手法より実行時間が長くなりました。独立タスクが多い構造や複数の重要経路が並行する構造では、特定のStreamへSMを重点配分するよりも、全StreamでSMを共有して多数のタスクを柔軟に同時実行する方が有利であると考えられます。SM使用率が高くても、SM数の少ないStreamが完了を遅らせればmakespanは短縮されないため、GPU全体の平均使用率だけで性能を判断することはできません。
+合成STGでは提案手法が全5種類で最短でしたが、実アプリケーションではImage Processing以外でExistingまたはSequentialが最短でした。したがって、提案手法の有効性をすべての入力へ一般化することはできません。
 
-実アプリケーション由来の6ベンチマークでは、提案手法は既存手法を上回りませんでした。これらのカーネルは処理特性やSM数に対する性能の変化が一様ではなく、合成カーネルの処理時間とタスクグラフ構造だけを用いた予測では、Green Contextによる分割後の実行時間を十分に推定できていない可能性があります。また、Image Processingのように提案手法によって実行時間とSM使用率の両方が悪化するケースでは、SM配分の偏りやStream間の負荷不均衡がボトルネックになった可能性があります。
+実アプリケーションでは、カーネルごとのSMスケーリング特性が一様ではなく、提案手法の予測と実測の差が残っています。また、HITSではExistingとProposedの数値検証がFAILしたため、まず共有ワークスペースまたは並列実行の正当性を再検証する必要があります。
 
 以上から、提案手法は重要な依存経路と並列タスクが明確に分かれる構造では有効ですが、すべてのSTGに一律に適用できるとは限りません。今後は、カーネルごとのSMスケーリング特性、Streamごとの処理量、複数の重要経路、Green Contextの生成・同期コストを予測モデルへ取り込み、通常Streamを用いる既存構成も含めて実行構成を選択する必要があります。
 
@@ -69,7 +86,7 @@ Sequential Chainでも提案手法が最短でしたが、4手法のSM使用率�
 | フォルダ | 手法 | 概要 |
 |---|---|---|
 | `sequential_method/` | Sequential | 全タスクを逐次実行する基準手法 |
-| `existing_method/` | Existing | bottom levelを用いて複数の通常CUDA Streamへ配置 |
+| `existing_method/` | Existing | INDEX順ready-listと依存元Stream継承で通常CUDA Streamへ配置 |
 | `existing_method_green_context/` | Existing + GC | Existingと同じ配置にGreen Contextの均等SM配分を適用 |
 | `proposed_method/` | Proposed | タスク重要度による配置と、固定配置に対するSM配分探索を実施 |
 
@@ -234,7 +251,7 @@ master_study/
 │   ├── benchmark_evaluation/             # 共通評価処理
 │   ├── benchmark_inputs/                 # 旧パス互換リンク
 │   ├── common/                           # 共通ヘッダ
-│   ├── sm_scaling_benchmark/             # SMスケーリング検証
+│   ├── kesco_sm_scaling_benchmark/       # KESCO SMスケーリング検証
 │   └── tools/                            # 補助ツール
 ├── results/                              # CSV・グラフ・測定結果
 └── README.md
@@ -247,10 +264,10 @@ master_study/
 評価コードは各実行ファイルが出力する次の値を収集します。
 
 ```text
-gpu_submit_wait_ms
+gpu_kernel_ms
 ```
 
-これはGPUへ処理を投入してから、対象となるGPU処理が完了するまでの時間です。ウォームアップを除いた値から、次をCSVへ保存します。
+これは最初のタスクのCUDA Event開始から最後のタスクのCUDA Event終了までのGPU上のmakespanです。Taskflow投入やCPU側の待機時間は含めません。ウォームアップを除いた値から、次をCSVへ保存します。
 
 - 平均実行時間
 - 最小・最大実行時間
@@ -264,6 +281,44 @@ gpu_submit_wait_ms
 
 KESCO由来の6入力では、公式grCUDAベンチマークのB1/B5/B6/B7/B8/B10に対応する実CUDAカーネルとデータフローを実行します。STG由来の5入力と独自STGでは、従来のLIGHT/HEAVY合成カーネルを実行します。全手法で同じ入力・カーネル・起動条件を共有し、スケジューリング手法を比較します。詳細は`benchmarks/benchmark_evaluation/README.md`を参照してください。
 
+## 全ベンチマークの実行
+
+`benchmarks/run_all_benchmarks.sh`を実行すると、4手法を自動的にビルドした後、11ベンチマークを順番に評価します。
+
+```bash
+cd /home/kobayashi/main/master_study/benchmarks
+./run_all_benchmarks.sh
+```
+
+このスクリプトは、次の順で処理します。
+
+1. `sequential_method`、`existing_method`、`existing_method_green_context`、
+   `proposed_method`をCUDAでビルドする。
+2. 各方式でKESCO由来6件と合成STG 5件を実行する。
+3. 実行時間、数値検証結果、95%信頼区間を集計する。
+4. 方式比較用のCSVとグラフを生成する。
+
+既定値は33回実行、先頭3回をウォームアップとして除外します。動作確認だけを行う場合は、実行回数を減らせます。
+
+```bash
+RUNS=2 WARMUP_RUNS=1 ./run_all_benchmarks.sh
+```
+
+結果は次に保存されます。
+
+- `results/benchmark_evaluation/latest-all/all_results.csv`
+- `results/method_comparison_figures/result_BENCHMARK/`
+- `results/method_comparison_figures/RESULT_stg/`
+- `results/method_comparison_figures/correctness_validation.csv`
+
+ビルド環境を変更する場合は、`NVCC`でCUDAコンパイラ、`TASKFLOW_INC`でTaskflowのincludeディレクトリを指定できます。
+
+```bash
+NVCC=/usr/local/cuda/bin/nvcc \
+TASKFLOW_INC=/home/kobayashi/taskflow \
+./run_all_benchmarks.sh
+```
+
 ## 各手法の概要
 
 ### Sequential
@@ -274,12 +329,14 @@ KESCO由来の6入力では、公式grCUDAベンチマークのB1/B5/B6/B7/B8/B1
 
 1. STGを読み込み、依存グラフを構築する。
 2. タスクをレベル化する。
-3. 出口タスクまでの残り処理時間を表すbottom levelを計算する。
-4. bottom levelが大きいreadyタスクを優先する。
-5. 予測完了時刻が小さくなる通常CUDA Streamへ配置する。
+3. 入次数0のタスクをready-listへ追加する。
+4. ready-listからタスクINDEXが小さい順に選ぶ。
+5. 依存元のないタスクはINDEX順にStreamへラウンドロビン配置し、依存元が
+   あるタスクは依存元と同じStreamへ配置してStream間同期を減らす。
 6. TaskflowとCUDA Eventで依存制約を保って実行する。
 
 使用するStream数は`min(最大レベル幅, 5)`です。全StreamがGPUのSMを共有し、Streamごとの専有SMは設けません。
+Existingは`proc_time`、予測終了時刻、bottom levelをStream選択に使用しません。
 
 ### Existing + Green Context
 
@@ -329,18 +386,22 @@ EFT(i,s) = EST(i,s) + p(i)
 
 #### Stage 4：SM配分
 
-`04_execution_configuration_selection.hpp`がStage 3の配置を固定したまま、各Streamの処理量へSM数を反映して予測makespanを評価します。
+`04_execution_configuration_selection.hpp`がStage 3の配置を固定したまま、各タスクのSM数別処理時間モデルを用いて予測makespanを評価します。評価ではStreamごとの単純な処理量合計ではなく、先行タスクの完了時刻、Stream内の待ち時間、依存タスクの合流を含むDAGスケジュールを再計算します。
 
 ```text
-W_s(M_s) = Σ p_hat(i,s)(M_s)
-C_max(M) = max(W_s(M_s))
+start(i) = max(
+    finish(pred(i)),
+    finish(previous task on stream(i))
+)
+finish(i) = start(i) + p_hat(i, M_stream(i))
+C_max(M) = max_i finish(i)
 ```
 
 既定の複数Stream構成では、各Streamに最低8 SMを与え、8 SM単位で配分候補を探索します。1～5 Streamの候補から予測makespanが最小の構成を選び、同値の場合はStream数が少ない構成を優先します。
 
 #### Stage 5：GPU実行
 
-`05_green_context_execution.cuh`がStream 0をprimary context上の通常Stream、Stream 1以降をGreen Context上のStreamとして作成します。TaskflowとCUDA Eventで依存関係を保ち、処理完了後にContext、Stream、Event、GPUメモリを解放します。
+`05_green_context_execution.cuh`がStream 0をprimary context上の通常Stream、Stream 1以降をGreen Context上のStreamとして作成します。TaskflowとCUDA Eventで依存関係を保ち、処理完了後にContext、Stream、Event、GPUメモリを解放します。論文比較では全方式でGreen Contextの使用条件を固定し、短時間処理だけを特別扱いしません。
 
 ## Proposedの主な実行オプション
 

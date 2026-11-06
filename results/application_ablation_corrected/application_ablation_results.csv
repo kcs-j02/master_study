@@ -1,0 +1,25 @@
+variant,benchmark,status,runs,warmup_runs,validation_status,validation_runs,validation_checks_per_run,max_validation_abs_error,mean_gpu_kernel_ms,min_gpu_kernel_ms,max_gpu_kernel_ms,median_gpu_kernel_ms,stddev_gpu_kernel_ms,ci95_gpu_kernel_ms,note
+full,vector_square,ok,33,3,PASS,33,12,0,68.737047,68.682300,68.833700,68.726750,0.042206,0.015760,KESCO application; fixed stream count 3
+no_importance,vector_square,ok,33,3,PASS,33,12,0,68.728090,68.605400,68.847800,68.726150,0.052737,0.019692,KESCO application; fixed stream count 3
+no_sm_allocation,vector_square,ok,33,3,PASS,33,12,0,68.708487,68.627400,68.788800,68.706450,0.047022,0.017558,KESCO application; fixed stream count 3
+no_stream_placement,vector_square,ok,33,3,PASS,33,12,0,100.747433,100.669000,100.860000,100.753000,0.054753,0.020445,KESCO application; fixed stream count 3
+full,black_scholes,ok,33,3,PASS,33,60,2.77556e-17,2.159790,1.993570,2.386080,2.104435,0.128826,0.048105,KESCO application; fixed stream count 3
+no_importance,black_scholes,ok,33,3,PASS,33,60,2.77556e-17,2.221928,2.046620,2.398620,2.235200,0.118847,0.044378,KESCO application; fixed stream count 3
+no_sm_allocation,black_scholes,ok,33,3,PASS,33,60,2.77556e-17,2.182251,2.015550,2.360480,2.143090,0.114510,0.042759,KESCO application; fixed stream count 3
+no_stream_placement,black_scholes,ok,33,3,PASS,33,60,2.77556e-17,2.897410,2.859520,2.961920,2.886530,0.028392,0.010602,KESCO application; fixed stream count 3
+full,machine_learning,ok,33,3,PASS,33,138,1.56462e-07,460.138500,456.629000,463.700000,459.754000,1.957512,0.730947,KESCO application; fixed stream count 3
+no_importance,machine_learning,ok,33,3,PASS,33,138,1.56462e-07,460.870967,457.060000,466.771000,460.326000,2.451239,0.915308,KESCO application; fixed stream count 3
+no_sm_allocation,machine_learning,ok,33,3,PASS,33,138,1.56462e-07,469.344267,465.172000,473.764000,469.595000,2.372274,0.885822,KESCO application; fixed stream count 3
+no_stream_placement,machine_learning,ok,33,3,PASS,33,138,1.56462e-07,461.002300,457.644000,465.286000,460.938000,1.964246,0.733462,KESCO application; fixed stream count 3
+full,hits,ok,33,3,PASS,33,20,8.64267e-06,167.475733,160.822000,181.929000,165.736500,5.909066,2.206482,KESCO application; fixed stream count 3
+no_importance,hits,ok,33,3,PASS,33,20,8.70228e-06,168.320033,160.781000,181.819000,165.689000,7.024274,2.622907,KESCO application; fixed stream count 3
+no_sm_allocation,hits,ok,33,3,PASS,33,20,8.46386e-06,167.497833,161.353000,182.417000,166.403000,5.241772,1.957310,KESCO application; fixed stream count 3
+no_stream_placement,hits,ok,33,3,PASS,33,20,8.52346e-06,317.622100,317.471000,317.822000,317.614500,0.076174,0.028444,KESCO application; fixed stream count 3
+full,image_processing,ok,33,3,PASS,33,24,3.72529e-09,64.361340,62.335900,68.840500,63.579700,1.957943,0.731108,KESCO application; fixed stream count 3
+no_importance,image_processing,ok,33,3,PASS,33,24,3.72529e-09,66.604150,58.385300,75.455800,63.636400,5.448487,2.034499,KESCO application; fixed stream count 3
+no_sm_allocation,image_processing,ok,33,3,PASS,33,24,3.72529e-09,66.183693,63.512900,70.905300,65.770350,1.651163,0.616555,KESCO application; fixed stream count 3
+no_stream_placement,image_processing,ok,33,3,PASS,33,24,3.72529e-09,78.041000,77.928600,78.122100,78.039850,0.048062,0.017947,KESCO application; fixed stream count 3
+full,deep_learning,ok,33,3,PASS,33,13,0,135.944267,120.929000,198.867000,123.139500,28.547651,10.659868,KESCO application; fixed stream count 3
+no_importance,deep_learning,ok,33,3,PASS,33,13,0,133.355767,120.241000,199.463000,123.136500,26.100384,9.746043,KESCO application; fixed stream count 3
+no_sm_allocation,deep_learning,ok,33,3,PASS,33,13,0,125.618833,120.843000,199.069000,122.946500,13.973407,5.217756,KESCO application; fixed stream count 3
+no_stream_placement,deep_learning,ok,33,3,PASS,33,13,0,233.390533,233.029000,233.752000,233.333000,0.212252,0.079256,KESCO application; fixed stream count 3

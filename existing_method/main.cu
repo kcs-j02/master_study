@@ -701,6 +701,8 @@ BenchResult run_taskflow_cuda(
   );
 
   if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::print_validation(
+      stg::kesco::validate_workspace(kesco_workspace));
   stg::kesco::destroy_workspace(kesco_workspace);
 
   const auto total_end =

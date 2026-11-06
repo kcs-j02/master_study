@@ -38,15 +38,16 @@ inline constexpr int kMaximumConfiguredStreamCount = 5;
 inline constexpr int kTaskParallelSmLimit = 64;
 
 /*
- * proc_timeを取得した基準SM数。
+ * 合成STGのproc_time倍率を計算する基準SM数。
  *
- * proc_timeは、実測で性能が飽和した64 SM相当を基準とする。
- * 64 SM未満の倍率は実行時と同じblock/thread構成から求める。
+ * KESCO由来タスクはカーネル別の実測時間表を使用するため、この値を
+ * proc_time倍率には使用しない。合成STGだけが64 SMを基準とする
+ * block-passモデルを使用する。
  */
 inline constexpr int kProcTimeReferenceSmCount = 64;
 
 /*
- * タスクの問題サイズ。
+ * 合成STGタスクの問題サイズ。
  *
  * 実測対象と同じ64 blocks * 256 elements相当の仕事量を使用する。
  */

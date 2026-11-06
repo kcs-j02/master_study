@@ -50,10 +50,10 @@ def read_results(path: Path) -> dict[tuple[str, str], tuple[float, float, float,
             if row["status"] != "ok":
                 continue
             key = (row["benchmark"], row["method"])
-            mean = float(row["mean_gpu_submit_wait_ms"])
-            minimum = float(row["min_gpu_submit_wait_ms"])
-            maximum = float(row["max_gpu_submit_wait_ms"])
-            ci95_text = row.get("ci95_gpu_submit_wait_ms", "")
+            mean = float(row["mean_gpu_kernel_ms"])
+            minimum = float(row["min_gpu_kernel_ms"])
+            maximum = float(row["max_gpu_kernel_ms"])
+            ci95_text = row.get("ci95_gpu_kernel_ms", "")
             ci95 = (
                 float(ci95_text)
                 if ci95_text
@@ -77,20 +77,21 @@ def main() -> None:
     selected_benchmarks = [
         item
         for item in BENCHMARKS
-        if any(key[0] == item[0] for key in results)
+        if all((item[0], method) in results for method, *_ in METHODS)
     ]
     if not selected_benchmarks:
         raise SystemExit("no successful benchmark rows found")
-
-    expected = [
-        (benchmark, method)
-        for benchmark, _ in selected_benchmarks
-        for method, *_ in METHODS
+    excluded = [
+        label
+        for benchmark, label in BENCHMARKS
+        if any(key[0] == benchmark for key in results)
+        and benchmark not in {item[0] for item in selected_benchmarks}
     ]
-    missing = [key for key in expected if key not in results]
-    if missing:
-        formatted = ", ".join(f"{benchmark}/{method}" for benchmark, method in missing)
-        raise SystemExit(f"missing successful result rows: {formatted}")
+    if excluded:
+        print(
+            "excluding benchmarks with validation failures or incomplete methods: "
+            + ", ".join(excluded)
+        )
 
     x = np.arange(len(selected_benchmarks), dtype=float)
     width = 0.19

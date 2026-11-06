@@ -7,13 +7,17 @@ workload       : KESCO B10 Deep Learning
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 2 streams, no Green Context
+validation_status: PASS
+validation_checks: 13
+validation_max_abs_error: 0
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  395.173 ms
-task DFG construction:     0.00215 ms
-task levelization:         0.00107 ms
-task assignment:           0.01061 ms
-resource allocation:       0.138951 ms
-gpu_submit_wait_ms:        121.686 ms
-gpu_kernel_ms:             121.511 ms
+total_ms:                  410.983 ms
+task DFG construction:     0.00508 ms
+task levelization:         0.00293 ms
+task assignment:           0.01044 ms
+resource allocation:       0.13216 ms
+gpu_submit_wait_ms:        121.187 ms
+gpu_kernel_ms:             121.018 ms
 ==================================

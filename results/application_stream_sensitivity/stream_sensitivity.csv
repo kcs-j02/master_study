@@ -1,0 +1,11 @@
+benchmark,stream_count,status,runs,warmup_runs,mean_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,mean_gpu_kernel_ms
+image_processing,1,ok,12,2,78.336360,0.035689,78.231880
+image_processing,2,ok,12,2,76.293410,0.338415,76.133560
+image_processing,3,ok,12,2,65.845280,1.775736,65.627320
+image_processing,4,ok,12,2,63.640050,0.535839,63.451400
+image_processing,5,ok,12,2,72.164730,2.014014,71.972070
+deep_learning,1,ok,12,2,234.743500,0.148868,234.644600
+deep_learning,2,ok,12,2,137.402200,23.533670,137.236800
+deep_learning,3,ok,12,2,145.900100,26.575732,145.748500
+deep_learning,4,ok,12,2,127.673800,1.347839,127.522000
+deep_learning,5,ok,12,2,135.542500,17.254474,135.389500

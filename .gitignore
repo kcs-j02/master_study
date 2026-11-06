@@ -1,0 +1,23 @@
+# Build products
+**/main
+experiments/ablation/strict_ablation
+
+# Generated benchmark logs and working files
+results/**/logs/
+results/**/work/
+results/**/raw/
+results/**/tmp/
+results/**/.matplotlib/
+
+# Nsight Systems and other profiling output
+results/batch_profiles/
+results/method_comparison_profiles/
+
+# Local generated plots
+stream_plots/
+**/*_stream_makespan.csv
+**/*_stream_makespan.png
+
+# Python caches
+__pycache__/
+*.pyc

@@ -7,13 +7,17 @@ workload       : KESCO B7 HITS
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 2 streams, no Green Context
+validation_status: PASS
+validation_checks: 20
+validation_max_abs_error: 8.58307e-06
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  448.395 ms
-task DFG construction:     0.02256 ms
-task levelization:         0.0118 ms
-task assignment:           0.06757 ms
-resource allocation:       0.13137 ms
-gpu_submit_wait_ms:        161.351 ms
-gpu_kernel_ms:             161.191 ms
+total_ms:                  586.851 ms
+task DFG construction:     0.01042 ms
+task levelization:         0.00408 ms
+task assignment:           0.01613 ms
+resource allocation:       0.14188 ms
+gpu_submit_wait_ms:        291.154 ms
+gpu_kernel_ms:             291.008 ms
 ==================================

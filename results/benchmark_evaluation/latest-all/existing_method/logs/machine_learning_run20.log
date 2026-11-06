@@ -7,13 +7,17 @@ workload       : KESCO B6 ML Ensemble
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 2 streams, no Green Context
+validation_status: PASS
+validation_checks: 138
+validation_max_abs_error: 1.56462e-07
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  760.21 ms
-task DFG construction:     0.00659 ms
-task levelization:         0.00364 ms
-task assignment:           0.0256 ms
-resource allocation:       0.14265 ms
-gpu_submit_wait_ms:        467.961 ms
-gpu_kernel_ms:             467.789 ms
+total_ms:                  726.607 ms
+task DFG construction:     0.00271 ms
+task levelization:         0.00162 ms
+task assignment:           0.007441 ms
+resource allocation:       0.13305 ms
+gpu_submit_wait_ms:        460.426 ms
+gpu_kernel_ms:             460.28 ms
 ==================================

@@ -120,6 +120,9 @@ BenchResult run_sequential_cuda(const std::vector<TaskSpec>& tasks) {
       start_event,
       stop_event));
 
+  stg::kesco::print_validation(
+      stg::kesco::validate_workspace(kesco_workspace));
+
   bench.gpu_kernel_ms =
       static_cast<double>(gpu_kernel_ms);
 

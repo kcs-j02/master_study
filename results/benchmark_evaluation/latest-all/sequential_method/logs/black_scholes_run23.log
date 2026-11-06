@@ -6,13 +6,17 @@ sum_proc_time : 17683
 workload       : KESCO B5 Black-Scholes
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: PASS
+validation_checks: 60
+validation_max_abs_error: 2.77556e-17
+validation_detail: deterministic reference samples and pipeline invariants
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  279.74 ms
+total_ms:                  278.096 ms
 task DFG construction:     0 ms
-task levelization:         0.00407 ms
+task levelization:         0.00208 ms
 task assignment:           0 ms
-resource allocation:       274.675 ms
-gpu_submit_wait_ms:        2.80344 ms
-gpu_kernel_ms:             2.78998 ms
+resource allocation:       272.577 ms
+gpu_submit_wait_ms:        2.79749 ms
+gpu_kernel_ms:             2.78474 ms
 ==================================

@@ -6,13 +6,17 @@ sum_proc_time : 297500
 workload       : synthetic LIGHT/HEAVY
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: NOT_APPLICABLE
+validation_checks: 0
+validation_max_abs_error: 0
+validation_detail: synthetic workload has no application reference result
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  1033.24 ms
+total_ms:                  1046.25 ms
 task DFG construction:     0 ms
-task levelization:         0.18071 ms
+task levelization:         0.150951 ms
 task assignment:           0 ms
-resource allocation:       266.285 ms
-gpu_submit_wait_ms:        766.59 ms
-gpu_kernel_ms:             766.569 ms
+resource allocation:       284.43 ms
+gpu_submit_wait_ms:        761.415 ms
+gpu_kernel_ms:             761.391 ms
 ==================================

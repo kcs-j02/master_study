@@ -6,13 +6,17 @@ sum_proc_time : 254
 workload       : KESCO B8 Image Processing
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: PASS
+validation_checks: 24
+validation_max_abs_error: 3.72529e-09
+validation_detail: deterministic reference samples and pipeline invariants
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  351.475 ms
+total_ms:                  359.684 ms
 task DFG construction:     0 ms
-task levelization:         0.00624 ms
+task levelization:         0.00517 ms
 task assignment:           0 ms
-resource allocation:       271.705 ms
-gpu_submit_wait_ms:        78.0979 ms
-gpu_kernel_ms:             78.0831 ms
+resource allocation:       279.499 ms
+gpu_submit_wait_ms:        77.9184 ms
+gpu_kernel_ms:             77.9061 ms
 ==================================

@@ -366,180 +366,67 @@ task 351 : importance=0
 smaller estimated makespan is better
 Stream=1 SM=           [114] estimated_makespan=297500  <-- BEST FOR 1 STREAM
 Stream=2 SM=         [58,56] estimated_makespan=297500  <-- BEST FOR 2 STREAM
-Stream=3 SM=      [34,40,40] estimated_makespan=199000  <-- BEST FOR 3 STREAM
+Stream=3 SM=      [34,40,40] estimated_makespan=587200  <-- BEST FOR 3 STREAM
 Stream=4 SM=   [34,32,24,24] estimated_makespan=222150  <-- BEST FOR 4 STREAM
 Stream=5 SM=[26,24,24,24,16] estimated_makespan=224100  <-- BEST FOR 5 STREAM
 
 ===== Best result for each Stream count =====
 Stream=1 SM=           [114] estimated_makespan=297500
 Stream=2 SM=         [58,56] estimated_makespan=297500
-Stream=3 SM=      [34,40,40] estimated_makespan=199000  <-- SELECTED
-Stream=4 SM=   [34,32,24,24] estimated_makespan=222150
+Stream=3 SM=      [34,40,40] estimated_makespan=587200
+Stream=4 SM=   [34,32,24,24] estimated_makespan=222150  <-- SELECTED
 Stream=5 SM=[26,24,24,24,16] estimated_makespan=224100
 =============================================
 
 ===== Proposed configuration =====
 max_stream_count   : 5
-stream_count       : 3
-selected SM        : [34,40,40]
-estimated makespan : 199000
+stream_count       : 4
+selected SM        : [34,32,24,24]
+prediction unit    : synthetic proc_time units
+estimated makespan : 222150
 sequential estimate: 297500
-estimated speedup  : 1.49497 x
-estimated reduction: 33.1092 %
-[GC setup] selected SM allocation: 34 / 40 / 40
+estimated speedup  : 1.33919 x
+estimated reduction: 25.3277 %
+[GC setup] selected SM allocation: 34 / 32 / 24 / 24
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=34, stream=0x55a691179d20, green_ctx=0
-stream[1] [GC] SM=40, stream=0x55a691133950, green_ctx=0x55a691133f00
-stream[2] [GC] SM=40, stream=0x55a691176d40, green_ctx=0x55a69116c340
+stream[0] [normal] SM=34, stream=0x5624226d5af0, green_ctx=0
+stream[1] [GC] SM=32, stream=0x562422684740, green_ctx=0x562422685050
+stream[2] [GC] SM=24, stream=0x5624226c7ee0, green_ctx=0x5624226bd4e0
+stream[3] [GC] SM=24, stream=0x5624226d5990, green_ctx=0x5624226caf10
 =============================================
-[normal launch] task=0, SM=34, blocks=64, threads/block=256
-[normal launch] task=1, SM=34, blocks=64, threads/block=256
-[normal launch] task=264, SM=34, blocks=64, threads/block=256
-[normal launch] task=178, SM=34, blocks=64, threads/block=256
-[normal launch] task=91, SM=34, blocks=64, threads/block=256
-[normal launch] task=4, SM=34, blocks=64, threads/block=256
-[normal launch] task=267, SM=34, blocks=64, threads/block=256
-[normal launch] task=181, SM=34, blocks=64, threads/block=256
-[normal launch] task=94, SM=34, blocks=64, threads/block=256
-[normal launch] task=7, SM=34, blocks=64, threads/block=256
-[normal launch] task=270, SM=34, blocks=64, threads/block=256
-[normal launch] task=184, SM=34, blocks=64, threads/block=256
-[normal launch] task=97, SM=34, blocks=64, threads/block=256
-[normal launch] task=10, SM=34, blocks=64, threads/block=256
-[normal launch] task=273, SM=34, blocks=64, threads/block=256
-[normal launch] task=187, SM=34, blocks=64, threads/block=256
-[normal launch] task=100, SM=34, blocks=64, threads/block=256
-[normal launch] task=13, SM=34, blocks=64, threads/block=256
-[normal launch] task=276, SM=34, blocks=64, threads/block=256
-[normal launch] task=190, SM=34, blocks=64, threads/block=256
-[normal launch] task=103, SM=34, blocks=64, threads/block=256
-[normal launch] task=16, SM=34, blocks=64, threads/block=256
-[normal launch] task=279, SM=34, blocks=64, threads/block=256
-[normal launch] task=193, SM=34, blocks=64, threads/block=256
-[normal launch] task=106, SM=34, blocks=64, threads/block=256
-[normal launch] task=19, SM=34, blocks=64, threads/block=256
-[normal launch] task=282, SM=34, blocks=64, threads/block=256
-[normal launch] task=196, SM=34, blocks=64, threads/block=256
-[normal launch] task=109, SM=34, blocks=64, threads/block=256
-[normal launch] task=22, SM=34, blocks=64, threads/block=256
-[normal launch] task=285, SM=34, blocks=64, threads/block=256
-[normal launch] task=199, SM=34, blocks=64, threads/block=256
-[normal launch] task=112, SM=34, blocks=64, threads/block=256
-[normal launch] task=25, SM=34, blocks=64, threads/block=256
-[normal launch] task=288, SM=34, blocks=64, threads/block=256
-[normal launch] task=202, SM=34, blocks=64, threads/block=256
-[normal launch] task=115, SM=34, blocks=64, threads/block=256
-[normal launch] task=28, SM=34, blocks=64, threads/block=256
-[normal launch] task=291, SM=34, blocks=64, threads/block=256
-[normal launch] task=205, SM=34, blocks=64, threads/block=256
-[normal launch] task=118, SM=34, blocks=64, threads/block=256
-[normal launch] task=31, SM=34, blocks=64, threads/block=256
-[normal launch] task=294, SM=34, blocks=64, threads/block=256
-[normal launch] task=208, SM=34, blocks=64, threads/block=256
-[normal launch] task=121, SM=34, blocks=64, threads/block=256
-[normal launch] task=34, SM=34, blocks=64, threads/block=256
-[normal launch] task=297, SM=34, blocks=64, threads/block=256
-[normal launch] task=211, SM=34, blocks=64, threads/block=256
-[normal launch] task=124, SM=34, blocks=64, threads/block=256
-[normal launch] task=37, SM=34, blocks=64, threads/block=256
-[normal launch] task=300, SM=34, blocks=64, threads/block=256
-[normal launch] task=214, SM=34, blocks=64, threads/block=256
-[normal launch] task=127, SM=34, blocks=64, threads/block=256
-[normal launch] task=40, SM=34, blocks=64, threads/block=256
-[normal launch] task=303, SM=34, blocks=64, threads/block=256
-[normal launch] task=217, SM=34, blocks=64, threads/block=256
-[normal launch] task=130, SM=34, blocks=64, threads/block=256
-[normal launch] task=43, SM=34, blocks=64, threads/block=256
-[normal launch] task=306, SM=34, blocks=64, threads/block=256
-[normal launch] task=220, SM=34, blocks=64, threads/block=256
-[normal launch] task=133, SM=34, blocks=64, threads/block=256
-[normal launch] task=46, SM=34, blocks=64, threads/block=256
-[normal launch] task=309, SM=34, blocks=64, threads/block=256
-[normal launch] task=223, SM=34, blocks=64, threads/block=256
-[normal launch] task=136, SM=34, blocks=64, threads/block=256
-[normal launch] task=49, SM=34, blocks=64, threads/block=256
-[normal launch] task=312, SM=34, blocks=64, threads/block=256
-[normal launch] task=226, SM=34, blocks=64, threads/block=256
-[normal launch] task=52, SM=34, blocks=64, threads/block=256
-[normal launch] task=314, SM=34, blocks=64, threads/block=256
-[normal launch] task=228, SM=34, blocks=64, threads/block=256
-[normal launch] task=142, SM=34, blocks=64, threads/block=256
-[normal launch] task=55, SM=34, blocks=64, threads/block=256
-[normal launch] task=317, SM=34, blocks=64, threads/block=256
-[normal launch] task=231, SM=34, blocks=64, threads/block=256
-[normal launch] task=145, SM=34, blocks=64, threads/block=256
-[normal launch] task=58, SM=34, blocks=64, threads/block=256
-[normal launch] task=320, SM=34, blocks=64, threads/block=256
-[normal launch] task=234, SM=34, blocks=64, threads/block=256
-[normal launch] task=148, SM=34, blocks=64, threads/block=256
-[normal launch] task=61, SM=34, blocks=64, threads/block=256
-[normal launch] task=323, SM=34, blocks=64, threads/block=256
-[normal launch] task=237, SM=34, blocks=64, threads/block=256
-[normal launch] task=151, SM=34, blocks=64, threads/block=256
-[normal launch] task=64, SM=34, blocks=64, threads/block=256
-[normal launch] task=326, SM=34, blocks=64, threads/block=256
-[normal launch] task=240, SM=34, blocks=64, threads/block=256
-[normal launch] task=154, SM=34, blocks=64, threads/block=256
-[normal launch] task=67, SM=34, blocks=64, threads/block=256
-[normal launch] task=329, SM=34, blocks=64, threads/block=256
-[normal launch] task=243, SM=34, blocks=64, threads/block=256
-[normal launch] task=157, SM=34, blocks=64, threads/block=256
-[normal launch] task=70, SM=34, blocks=64, threads/block=256
-[normal launch] task=332, SM=34, blocks=64, threads/block=256
-[normal launch] task=246, SM=34, blocks=64, threads/block=256
-[normal launch] task=160, SM=34, blocks=64, threads/block=256
-[normal launch] task=73, SM=34, blocks=64, threads/block=256
-[normal launch] task=335, SM=34, blocks=64, threads/block=256
-[normal launch] task=249, SM=34, blocks=64, threads/block=256
-[normal launch] task=163, SM=34, blocks=64, threads/block=256
-[normal launch] task=76, SM=34, blocks=64, threads/block=256
-[normal launch] task=338, SM=34, blocks=64, threads/block=256
-[normal launch] task=252, SM=34, blocks=64, threads/block=256
-[normal launch] task=166, SM=34, blocks=64, threads/block=256
-[normal launch] task=79, SM=34, blocks=64, threads/block=256
-[normal launch] task=341, SM=34, blocks=64, threads/block=256
-[normal launch] task=255, SM=34, blocks=64, threads/block=256
-[normal launch] task=169, SM=34, blocks=64, threads/block=256
-[normal launch] task=82, SM=34, blocks=64, threads/block=256
-[normal launch] task=344, SM=34, blocks=64, threads/block=256
-[normal launch] task=258, SM=34, blocks=64, threads/block=256
-[normal launch] task=172, SM=34, blocks=64, threads/block=256
-[normal launch] task=85, SM=34, blocks=64, threads/block=256
-[normal launch] task=347, SM=34, blocks=64, threads/block=256
-[normal launch] task=261, SM=34, blocks=64, threads/block=256
-[normal launch] task=175, SM=34, blocks=64, threads/block=256
-[normal launch] task=88, SM=34, blocks=64, threads/block=256
-[normal launch] task=350, SM=34, blocks=64, threads/block=256
-[GC last task completed] stream=1, task=176
-[GC last task completed] stream=2, task=263
-[GC released] stream[1], returned SM=40, current normal SM=74
-[GC released] stream[2], returned SM=40, current normal SM=114
-[normal launch] task=351, SM=114, blocks=64, threads/block=256
+[GC released] stream[1], returned SM=32, current normal SM=66
+[GC released] stream[2], returned SM=24, current normal SM=90
+[GC released] stream[3], returned SM=24, current normal SM=114
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x55a691179d20, green_ctx=0
+stream[0] [normal] SM=114, stream=0x5624226d5af0, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream[2] [GC] SM=0, stream=0, green_ctx=0
+stream[3] [GC] SM=0, stream=0, green_ctx=0
 =============================================
 [CHECK] all GC streams released
 [CHECK] final normal SM=114
+validation_status: NOT_APPLICABLE
+validation_checks: 0
+validation_max_abs_error: 0
+validation_detail: synthetic workload has no application reference result
 stream comparison CSV: stream_plots/synthetic_multiple_long_branches_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000385432 s
-stage_2_task_importance_seconds: 0.000108490 s
-stage_3_stream_placement_seconds: 0.001029934 s
-stage_4_sm_allocation_seconds: 0.006355905 s
-stage_5_green_context_execution_seconds: 0.155033293 s
+stage_1_stg_analysis_seconds: 0.000370132 s
+stage_2_task_importance_seconds: 0.000113810 s
+stage_3_stream_placement_seconds: 0.000984153 s
+stage_4_sm_allocation_seconds: 0.038135258 s
+stage_5_green_context_execution_seconds: 0.142217952 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  425.473 ms
-stage 1 STG analysis:      0.385432 ms
-stage 2 task importance:   0.10849 ms
-stage 3 stream placement:  1.02993 ms
-stage 4 SM allocation:     6.3559 ms
-stage 5 GC execution:      155.033 ms
-gpu_submit_wait_ms:        151.532 ms
-gpu_kernel_ms:             151.406 ms
+total_ms:                  438.138 ms
+stage 1 STG analysis:      0.370132 ms
+stage 2 task importance:   0.11381 ms
+stage 3 stream placement:  0.984153 ms
+stage 4 SM allocation:     38.1353 ms
+stage 5 GC execution:      142.218 ms
+gpu_submit_wait_ms:        138.759 ms
+gpu_kernel_ms:             138.559 ms
 ==================================

@@ -79,7 +79,7 @@ def query_sm_active(sqlite_path: Path) -> dict[str, float | int]:
             """
         ).fetchall()
 
-        # Workspace initialization is outside gpu_submit_wait_ms and must not
+        # Workspace initialization is outside gpu_kernel_ms and must not
         # contaminate the task-execution utilization window.
         task_kernels = [
             row for row in kernels
@@ -135,6 +135,9 @@ def main() -> None:
     env = dict(os.environ)
     env["TMPDIR"] = str(tmp_dir)
     env["STG_DISABLE_STREAM_PLOT"] = "1"
+    # Result validation runs after the timed task graph. HITS validation uses
+    # extra reduction kernels, which must not enter the Nsight SM window.
+    env["STG_DISABLE_RESULT_VALIDATION"] = "1"
 
     csv_path = output_dir / "sm_active_results.csv"
     fieldnames = (

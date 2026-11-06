@@ -17,10 +17,7 @@ stream[1] SM=56 [GC]
 ===== Existing method + even GC configuration =====
 max_stream_count : 5
 stream_count     : 2
-estimated makespan: 2240
-sequential estimated: 4220
-estimated speedup    : 1.88393 x
-estimated reduction  : 46.9194 %
+placement policy : INDEX order + predecessor stream
 stream 0 : 56 SM
 stream 1 : 56 SM
 ===== Planned stream load =====
@@ -31,11 +28,11 @@ stream 0 tasks       : 2
 stream 0 busy        : 2240
 stream 0 span        : 2240
 stream 0 density     : 1
-[GC setup time] 0.249231 ms
+[GC setup time] 0.231951 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x55faabdab350, green_ctx=0x55faabd92fb0, has_stream=1, has_gc=1, SM=56
-stream[1] [GC] stream_ptr=0x55faabdab4b0, green_ctx=0x55faabda0950, has_stream=1, has_gc=1, SM=56
+stream[0] [GC] stream_ptr=0x563f6e522240, green_ctx=0x563f6e509ea0, has_stream=1, has_gc=1, SM=56
+stream[1] [GC] stream_ptr=0x563f6e5223a0, green_ctx=0x563f6e517840, has_stream=1, has_gc=1, SM=56
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -45,13 +42,17 @@ stream[0] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 =============================================
 [CHECK] all GC streams released
+validation_status: PASS
+validation_checks: 12
+validation_max_abs_error: 0
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  324.932 ms
-task DFG construction:     0.00218 ms
-task levelization:         0.00043 ms
-task assignment:           0.00932 ms
-resource allocation:       0.262071 ms
-gpu_submit_wait_ms:        68.9018 ms
-gpu_kernel_ms:             68.7671 ms
+total_ms:                  344.616 ms
+task DFG construction:     0.00156 ms
+task levelization:         0.00049 ms
+task assignment:           0.00305 ms
+resource allocation:       0.242971 ms
+gpu_submit_wait_ms:        68.8435 ms
+gpu_kernel_ms:             68.6655 ms
 ==================================

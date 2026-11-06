@@ -77,6 +77,8 @@ struct GreenContextExecutionOptions {
 
   int scheduling_reference_sm =
       kSchedulingReferenceSmCount;
+
+  bool release_completed_contexts_during_execution = false;
 };
 
 
@@ -2809,6 +2811,7 @@ execute_with_green_context(
                * Stream 0確認ログ
                */
               if (
+                  std::getenv("STG_VERBOSE_EXECUTION") != nullptr &&
                   !options.disable_green_context &&
                   stream_id == 0
               ) {
@@ -2873,6 +2876,7 @@ execute_with_green_context(
                */
               if (
                   !options.disable_green_context &&
+                  options.release_completed_contexts_during_execution &&
 
                   stream_id > 0 &&
 
@@ -2895,15 +2899,17 @@ execute_with_green_context(
                 );
 
 
-                std::cout
-                    << "[GC last task completed]"
-                    << " stream="
-                    << stream_id
+                if (std::getenv("STG_VERBOSE_EXECUTION") != nullptr) {
+                  std::cout
+                      << "[GC last task completed]"
+                      << " stream="
+                      << stream_id
 
-                    << ", task="
-                    << task.id
+                      << ", task="
+                      << task.id
 
-                    << '\n';
+                      << '\n';
+                }
 
 
                 /*
@@ -2960,20 +2966,6 @@ execute_with_green_context(
   ).wait();
 
 
-  /*
-   * 残っているGCがあればcleanup。
-   */
-  if (
-      !options.disable_green_context &&
-      stream_count >= 2
-  ) {
-    wait_and_release_green_context_streams(
-        resources,
-        resource_mutex
-    );
-  }
-
-
   GC_CUDA_CHECK(
       cudaDeviceSynchronize()
   );
@@ -2991,6 +2983,21 @@ execute_with_green_context(
           submit_end -
           submit_start
       ).count();
+
+  /*
+   * Resource cleanup is intentionally outside gpu_submit_wait_ms.
+   * This keeps the execution metric comparable with the existing method,
+   * which destroys its contexts after recording the measured interval.
+   */
+  if (
+      !options.disable_green_context &&
+      stream_count >= 2
+  ) {
+    wait_and_release_green_context_streams(
+        resources,
+        resource_mutex
+    );
+  }
 
 
   /*
@@ -3183,6 +3190,8 @@ execute_with_green_context(
   if (device_memory != nullptr) {
     GC_CUDA_CHECK(cudaFree(device_memory));
   }
+  stg::kesco::print_validation(
+      stg::kesco::validate_workspace(kesco_workspace));
   stg::kesco::destroy_workspace(kesco_workspace);
 
 

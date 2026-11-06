@@ -7,13 +7,17 @@ workload       : KESCO B8 Image Processing
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 3 streams, no Green Context
+validation_status: PASS
+validation_checks: 24
+validation_max_abs_error: 3.72529e-09
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  355.754 ms
-task DFG construction:     0.00391 ms
-task levelization:         0.0014 ms
-task assignment:           0.01501 ms
-resource allocation:       0.143951 ms
-gpu_submit_wait_ms:        62.8275 ms
-gpu_kernel_ms:             62.6677 ms
+total_ms:                  381.77 ms
+task DFG construction:     0.00655 ms
+task levelization:         0.00356 ms
+task assignment:           0.01746 ms
+resource allocation:       0.136701 ms
+gpu_submit_wait_ms:        72.068 ms
+gpu_kernel_ms:             71.8506 ms
 ==================================

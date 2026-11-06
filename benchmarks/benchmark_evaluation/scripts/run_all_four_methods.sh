@@ -6,6 +6,7 @@ readonly study_dir="$(cd -- "$project_dir/../.." && pwd)"
 readonly figure_root="$study_dir/results/method_comparison_figures"
 readonly stg_figure_dir="$figure_root/RESULT_stg"
 readonly benchmark_figure_dir="$figure_root/result_BENCHMARK"
+readonly validation_csv="$figure_root/correctness_validation.csv"
 
 if [[ -n "${RESULTS_DIR:-}" ]]; then
   root="$RESULTS_DIR"
@@ -36,6 +37,11 @@ awk -F, 'NR == 1 || $1 ~ /^synthetic_/' \
 awk -F, 'NR == 1 || $1 !~ /^synthetic_/' \
   "$root/all_results.csv" >"$benchmark_figure_dir/all_benchmark_results.csv"
 
+awk -F, 'BEGIN { OFS="," }
+  NR == 1 { print $1,$2,$3,$6,$7,$8,$9; next }
+  { print $1,$2,$3,$6,$7,$8,$9 }
+' "$root/all_results.csv" >"$validation_csv"
+
 MPLCONFIGDIR="$root/.matplotlib" \
   python3 "$script_dir/plot_benchmark_comparison.py" \
     "$stg_figure_dir/all_stg_results.csv" \
@@ -51,3 +57,10 @@ echo "published STG CSV: $stg_figure_dir/all_stg_results.csv"
 echo "published STG graph: $stg_figure_dir/all_stg_execution_time_comparison.png"
 echo "published other-benchmark CSV: $benchmark_figure_dir/all_benchmark_results.csv"
 echo "published other-benchmark graph: $benchmark_figure_dir/all_benchmark_execution_time_comparison.png"
+echo "correctness validation table: $validation_csv"
+
+if awk -F, 'NR > 1 && $3 == "validation_failed" { found=1 } END { exit !found }' \
+    "$root/all_results.csv"; then
+  echo "one or more numerical validations failed; see $validation_csv" >&2
+  exit 1
+fi

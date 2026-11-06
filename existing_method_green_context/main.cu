@@ -401,41 +401,7 @@ BenchResult run_taskflow_cuda(
             << max_stream_count << '\n';
   std::cout << "stream_count     : "
             << stream_count << '\n';
-  std::cout << "estimated makespan: "
-            << final_schedule.makespan
-            << '\n';
-
-  double sequential_estimated_time = 0.0;
-
-  for (const auto& task : tasks) {
-    sequential_estimated_time +=
-        static_cast<double>(
-            std::max(0, task.proc_time)
-        );
-  }
-
-  const double estimated_speedup =
-      final_schedule.makespan <= 0.0
-          ? 0.0
-          : sequential_estimated_time /
-                final_schedule.makespan;
-
-  const double estimated_reduction_percent =
-      sequential_estimated_time <= 0.0
-          ? 0.0
-          : (sequential_estimated_time -
-             final_schedule.makespan) /
-                sequential_estimated_time * 100.0;
-
-  std::cout << "sequential estimated: "
-            << sequential_estimated_time
-            << '\n';
-  std::cout << "estimated speedup    : "
-            << estimated_speedup
-            << " x\n";
-  std::cout << "estimated reduction  : "
-            << estimated_reduction_percent
-            << " %\n";
+  std::cout << "placement policy : INDEX order + predecessor stream\n";
 
   for (int stream_id = 0;
        stream_id < stream_count;
@@ -1007,6 +973,8 @@ BenchResult run_taskflow_cuda(
   destroy_runtime_resources(rr);
 
   if (dmem != nullptr) CUDA_CHECK(cudaFree(dmem));
+  stg::kesco::print_validation(
+      stg::kesco::validate_workspace(kesco_workspace));
   stg::kesco::destroy_workspace(kesco_workspace);
 
   const auto total_end = Clock::now();

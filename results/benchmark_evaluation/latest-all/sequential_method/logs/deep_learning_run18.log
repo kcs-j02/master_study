@@ -6,13 +6,17 @@ sum_proc_time : 786
 workload       : KESCO B10 Deep Learning
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: PASS
+validation_checks: 13
+validation_max_abs_error: 0
+validation_detail: deterministic reference samples and pipeline invariants
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  506.96 ms
+total_ms:                  519.481 ms
 task DFG construction:     0 ms
-task levelization:         0.00439 ms
+task levelization:         0.00447 ms
 task assignment:           0 ms
-resource allocation:       269.917 ms
-gpu_submit_wait_ms:        234.483 ms
-gpu_kernel_ms:             234.468 ms
+resource allocation:       283.662 ms
+gpu_submit_wait_ms:        232.879 ms
+gpu_kernel_ms:             232.864 ms
 ==================================

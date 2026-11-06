@@ -22,70 +22,69 @@ task 9 : importance=1806
 
 ===== All SM allocation candidates =====
 smaller estimated makespan is better
-Stream=1 SM=           [114] estimated_makespan=17683  <-- BEST FOR 1 STREAM
-Stream=2 SM=         [66,48] estimated_makespan=17662  <-- BEST FOR 2 STREAM
-Stream=3 SM=      [34,40,40] estimated_makespan=13870  <-- BEST FOR 3 STREAM
-Stream=4 SM=   [34,32,24,24] estimated_makespan=10842  <-- BEST FOR 4 STREAM
-Stream=5 SM=[18,24,24,24,24] estimated_makespan=13760  <-- BEST FOR 5 STREAM
+Stream=1 SM=           [114] estimated_makespan=2.76928  <-- BEST FOR 1 STREAM
+Stream=2 SM=         [50,64] estimated_makespan=2.62296  <-- BEST FOR 2 STREAM
+Stream=3 SM=      [50,32,32] estimated_makespan=2.09837  <-- BEST FOR 3 STREAM
+Stream=4 SM=   [34,32,24,24] estimated_makespan=1.57771  <-- BEST FOR 4 STREAM
+Stream=5 SM=[18,24,24,24,24] estimated_makespan=1.93827  <-- BEST FOR 5 STREAM
 
 ===== Best result for each Stream count =====
-Stream=1 SM=           [114] estimated_makespan=17683
-Stream=2 SM=         [66,48] estimated_makespan=17662
-Stream=3 SM=      [34,40,40] estimated_makespan=13870
-Stream=4 SM=   [34,32,24,24] estimated_makespan=10842  <-- SELECTED
-Stream=5 SM=[18,24,24,24,24] estimated_makespan=13760
+Stream=1 SM=           [114] estimated_makespan=2.76928
+Stream=2 SM=         [50,64] estimated_makespan=2.62296
+Stream=3 SM=      [50,32,32] estimated_makespan=2.09837
+Stream=4 SM=   [34,32,24,24] estimated_makespan=1.57771  <-- SELECTED
+Stream=5 SM=[18,24,24,24,24] estimated_makespan=1.93827
 =============================================
 
 ===== Proposed configuration =====
 max_stream_count   : 5
 stream_count       : 4
 selected SM        : [34,32,24,24]
-estimated makespan : 10842
-sequential estimate: 17683
-estimated speedup  : 1.63097 x
-estimated reduction: 38.6869 %
+prediction unit    : ms (offline profile)
+estimated makespan : 1.57771
+sequential estimate: 2.76928
+estimated speedup  : 1.75525 x
+estimated reduction: 43.0281 %
 [GC setup] selected SM allocation: 34 / 32 / 24 / 24
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=34, stream=0x5619a2d16890, green_ctx=0
-stream[1] [GC] SM=32, stream=0x5619a2ceff10, green_ctx=0x5619a2cf0820
-stream[2] [GC] SM=24, stream=0x5619a2d08d00, green_ctx=0x5619a2cfe300
-stream[3] [GC] SM=24, stream=0x5619a2d16730, green_ctx=0x5619a2d0bd30
+stream[0] [normal] SM=34, stream=0x55e864db0960, green_ctx=0
+stream[1] [GC] SM=32, stream=0x55e864d89fe0, green_ctx=0x55e864d8a8f0
+stream[2] [GC] SM=24, stream=0x55e864da2dd0, green_ctx=0x55e864d983d0
+stream[3] [GC] SM=24, stream=0x55e864db0800, green_ctx=0x55e864da5e00
 =============================================
-[normal launch] task=6, SM=34, blocks=64, threads/block=256
-[normal launch] task=4, SM=34, blocks=64, threads/block=256
-[normal launch] task=5, SM=34, blocks=64, threads/block=256
-[GC last task completed] stream=1, task=2
-[GC last task completed] stream=3, task=8
 [GC released] stream[1], returned SM=32, current normal SM=66
-[GC released] stream[3], returned SM=24, current normal SM=90
-[GC last task completed] stream=2, task=3
-[GC released] stream[2], returned SM=24, current normal SM=114
+[GC released] stream[2], returned SM=24, current normal SM=90
+[GC released] stream[3], returned SM=24, current normal SM=114
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x5619a2d16890, green_ctx=0
+stream[0] [normal] SM=114, stream=0x55e864db0960, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 stream[2] [GC] SM=0, stream=0, green_ctx=0
 stream[3] [GC] SM=0, stream=0, green_ctx=0
 =============================================
 [CHECK] all GC streams released
 [CHECK] final normal SM=114
+validation_status: PASS
+validation_checks: 60
+validation_max_abs_error: 2.77556e-17
+validation_detail: deterministic reference samples and pipeline invariants
 stream comparison CSV: stream_plots/black_scholes_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000121821 s
-stage_2_task_importance_seconds: 0.000008960 s
-stage_3_stream_placement_seconds: 0.000057490 s
-stage_4_sm_allocation_seconds: 0.000610712 s
-stage_5_green_context_execution_seconds: 0.010671222 s
+stage_1_stg_analysis_seconds: 0.000134540 s
+stage_2_task_importance_seconds: 0.000010800 s
+stage_3_stream_placement_seconds: 0.000060711 s
+stage_4_sm_allocation_seconds: 0.001502995 s
+stage_5_green_context_execution_seconds: 0.010221747 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  283.671 ms
-stage 1 STG analysis:      0.121821 ms
-stage 2 task importance:   0.00896 ms
-stage 3 stream placement:  0.05749 ms
-stage 4 SM allocation:     0.610712 ms
-stage 5 GC execution:      10.6712 ms
-gpu_submit_wait_ms:        2.58151 ms
-gpu_kernel_ms:             2.3513 ms
+total_ms:                  322.65 ms
+stage 1 STG analysis:      0.13454 ms
+stage 2 task importance:   0.0108 ms
+stage 3 stream placement:  0.060711 ms
+stage 4 SM allocation:     1.503 ms
+stage 5 GC execution:      10.2217 ms
+gpu_submit_wait_ms:        2.30734 ms
+gpu_kernel_ms:             2.00253 ms
 ==================================

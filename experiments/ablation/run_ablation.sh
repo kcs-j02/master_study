@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly root_dir="$(cd -- "$script_dir/../.." && pwd)"
+readonly output_dir="${RESULTS_DIR:-$root_dir/results/ablation}"
+readonly binary="$output_dir/strict_ablation"
+readonly runs="${RUNS:-33}"
+readonly warmup_runs="${WARMUP_RUNS:-3}"
+readonly stream_count="${ABLATION_STREAMS:-3}"
+
+if [[ ! "$runs" =~ ^[1-9][0-9]*$ ||
+      ! "$warmup_runs" =~ ^[0-9]+$ ||
+      "$warmup_runs" -ge "$runs" ]]; then
+  echo "RUNS must be positive and 0 <= WARMUP_RUNS < RUNS" >&2
+  exit 2
+fi
+
+if [[ ! "$stream_count" =~ ^[1-9]$ ]] || (( stream_count > 5 )); then
+  echo "ABLATION_STREAMS must be between 1 and 5" >&2
+  exit 2
+fi
+
+mkdir -p "$output_dir/raw"
+"$script_dir/build_strict_ablation.sh" "$binary" >/dev/null
+
+declare -a modes=(full no_importance no_sm_allocation no_stream_placement)
+printf 'variant,benchmark,status,runs,warmup_runs,validation_status,validation_runs,validation_checks_per_run,max_validation_abs_error,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,median_gpu_submit_wait_ms,stddev_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,note\n' \
+  >"$output_dir/ablation_results.csv"
+
+benchmark_names=()
+if (( $# > 0 )); then
+  benchmark_names=("$@")
+else
+  while IFS= read -r benchmark; do
+    benchmark_names+=("$benchmark")
+  done < <(
+    find "$root_dir/benchmarks/STG" -mindepth 2 -maxdepth 2 \
+      -name '*.stg' -printf '%f\n' | sed 's/\.stg$//' | sort
+  )
+fi
+
+for mode in "${modes[@]}"; do
+  mode_dir="$output_dir/raw/$mode"
+  mkdir -p "$mode_dir/logs" "$mode_dir/work"
+  for benchmark in "${benchmark_names[@]}"; do
+    stg="$root_dir/benchmarks/STG/BENCHMARK_$benchmark/$benchmark.stg"
+    if [[ ! -f "$stg" ]]; then
+      echo "benchmark input not found: $stg" >&2
+      exit 1
+    fi
+
+    values="$mode_dir/work/$benchmark.values"
+    : >"$values"
+    for ((run = 1; run <= runs; ++run)); do
+      log="$mode_dir/logs/${benchmark}_run$(printf '%02d' "$run").log"
+      if ! STG_ABLATION_MODE="$mode" \
+        STG_ABLATION_STREAMS="$stream_count" \
+        STG_DISABLE_STREAM_PLOT=1 \
+        "$binary" "$stg" >"$log" 2>&1; then
+        echo "benchmark failed: $mode / $benchmark / run $run" >&2
+        tail -n 40 "$log" >&2
+        exit 1
+      fi
+      value="$(awk '$1 == "gpu_submit_wait_ms:" {v=$2} END {print v}' "$log")"
+      if [[ -z "$value" ]]; then
+        echo "gpu_submit_wait_ms missing: $log" >&2
+        exit 1
+      fi
+      if (( run > warmup_runs )); then
+        printf '%s\n' "$value" >>"$values"
+      fi
+    done
+
+    stats="$(sort -n "$values" | awk '
+      {value[NR]=$1; sum+=$1; sumsq+=$1*$1; max=$1}
+      NR == 1 {min=$1}
+      END {
+        mean=sum/NR
+        median=(NR%2 ? value[(NR+1)/2] : (value[NR/2]+value[NR/2+1])/2)
+        stddev=(NR>1 ? sqrt((sumsq-NR*mean*mean)/(NR-1)) : 0)
+        ci95=(NR>1 ? 2.045229642*stddev/sqrt(NR) : 0)
+        printf "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f", mean,min,max,median,stddev,ci95
+      }')"
+    printf '%s,%s,ok,%s,%s,NOT_APPLICABLE,%s,0,0,%s,shared fixed stream count %s\n' \
+      "$mode" "$benchmark" "$runs" "$warmup_runs" \
+      "$((runs - warmup_runs))" "$stats" "$stream_count" \
+      >>"$output_dir/ablation_results.csv"
+  done
+done
+
+python3 "$script_dir/analyze_ablation.py" \
+  "$output_dir/ablation_results.csv" \
+  "$output_dir/ablation_summary.csv" \
+  "$output_dir/ablation_summary.md"
+
+echo "ablation results: $output_dir/ablation_results.csv"

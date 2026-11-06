@@ -229,8 +229,7 @@ inline int get_normal_priority_stream_limit(
  *   - 通常streamへ既定で70%程度のSMを残す。
  *   - GC総量だけをcudaDevSmResourceSplitで確保する。
  *   - GC間は極端な性能差を付けず、ほぼ均等に分配する。
- *   - 重要タスクはtask_assignment側のbottom level順に処理され、
- *     最大SMのstream 0が選ばれやすくなる。
+ *   - task_assignment側で確定した既存手法の配置は変更しない。
  */
 inline std::vector<int> decide_stream_sm_counts(
     const std::vector<TaskSpec>& tasks,

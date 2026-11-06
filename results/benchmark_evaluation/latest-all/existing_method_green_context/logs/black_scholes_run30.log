@@ -20,34 +20,31 @@ stream[4] SM=16 [GC]
 ===== Existing method + even GC configuration =====
 max_stream_count : 5
 stream_count     : 5
-estimated makespan: 3609
-sequential estimated: 17683
-estimated speedup    : 4.8997 x
-estimated reduction  : 79.5906 %
+placement policy : INDEX order + predecessor stream
 stream 0 : 24 SM
 stream 1 : 24 SM
 stream 2 : 24 SM
 stream 3 : 24 SM
 stream 4 : 16 SM
 ===== Planned stream load =====
-stream 0 : tasks=2, proc_load=3551
-stream 1 : tasks=2, proc_load=3422
-stream 2 : tasks=2, proc_load=3501
-stream 3 : tasks=2, proc_load=3600
-stream 4 : tasks=2, proc_load=3609
+stream 0 : tasks=2, proc_load=3485
+stream 1 : tasks=2, proc_load=3650
+stream 2 : tasks=2, proc_load=3416
+stream 3 : tasks=2, proc_load=3609
+stream 4 : tasks=2, proc_load=3523
 ===============================
 stream 0 tasks       : 2
-stream 0 busy        : 3551
-stream 0 span        : 3551
+stream 0 busy        : 3485
+stream 0 span        : 3485
 stream 0 density     : 1
-[GC setup time] 0.493332 ms
+[GC setup time] 0.471692 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x563ba56dd970, green_ctx=0x563ba569f930, has_stream=1, has_gc=1, SM=24
-stream[1] [GC] stream_ptr=0x563ba56ddad0, green_ctx=0x563ba56ad2d0, has_stream=1, has_gc=1, SM=24
-stream[2] [GC] stream_ptr=0x563ba56ddc30, green_ctx=0x563ba56b7cd0, has_stream=1, has_gc=1, SM=24
-stream[3] [GC] stream_ptr=0x563ba56ddd90, green_ctx=0x563ba56c55a0, has_stream=1, has_gc=1, SM=24
-stream[4] [GC] stream_ptr=0x563ba56e0dc0, green_ctx=0x563ba56d0020, has_stream=1, has_gc=1, SM=16
+stream[0] [GC] stream_ptr=0x55b3d27ffa30, green_ctx=0x55b3d27c1ac0, has_stream=1, has_gc=1, SM=24
+stream[1] [GC] stream_ptr=0x55b3d27ffb90, green_ctx=0x55b3d27cf390, has_stream=1, has_gc=1, SM=24
+stream[2] [GC] stream_ptr=0x55b3d27ffcf0, green_ctx=0x55b3d27d9d90, has_stream=1, has_gc=1, SM=24
+stream[3] [GC] stream_ptr=0x55b3d27ffe50, green_ctx=0x55b3d27e7660, has_stream=1, has_gc=1, SM=24
+stream[4] [GC] stream_ptr=0x55b3d2802e80, green_ctx=0x55b3d27f20e0, has_stream=1, has_gc=1, SM=16
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -63,13 +60,17 @@ stream[3] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 stream[4] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 =============================================
 [CHECK] all GC streams released
+validation_status: PASS
+validation_checks: 60
+validation_max_abs_error: 2.77556e-17
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  284.07 ms
-task DFG construction:     0.00628 ms
-task levelization:         0.00146 ms
-task assignment:           0.02356 ms
-resource allocation:       0.505602 ms
-gpu_submit_wait_ms:        2.57268 ms
-gpu_kernel_ms:             2.37443 ms
+total_ms:                  287.816 ms
+task DFG construction:     0.00214 ms
+task levelization:         0.00051 ms
+task assignment:           0.00393 ms
+resource allocation:       0.482922 ms
+gpu_submit_wait_ms:        2.62755 ms
+gpu_kernel_ms:             2.23504 ms
 ==================================

@@ -18,28 +18,25 @@ stream[2] SM=32 [GC]
 ===== Existing method + even GC configuration =====
 max_stream_count : 5
 stream_count     : 3
-estimated makespan: 202
-sequential estimated: 254
-estimated speedup    : 1.25743 x
-estimated reduction  : 20.4724 %
+placement policy : INDEX order + predecessor stream
 stream 0 : 40 SM
 stream 1 : 40 SM
 stream 2 : 32 SM
 ===== Planned stream load =====
 stream 0 : tasks=3, proc_load=202
-stream 1 : tasks=5, proc_load=33
-stream 2 : tasks=3, proc_load=19
+stream 1 : tasks=6, proc_load=40
+stream 2 : tasks=2, proc_load=12
 ===============================
 stream 0 tasks       : 3
 stream 0 busy        : 202
 stream 0 span        : 202
 stream 0 density     : 1
-[GC setup time] 0.290281 ms
+[GC setup time] 0.262961 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x562833b0f100, green_ctx=0x562833ae97d0, has_stream=1, has_gc=1, SM=40
-stream[1] [GC] stream_ptr=0x562833b0f260, green_ctx=0x562833af6ef0, has_stream=1, has_gc=1, SM=40
-stream[2] [GC] stream_ptr=0x562833b0f3c0, green_ctx=0x562833b018f0, has_stream=1, has_gc=1, SM=32
+stream[0] [GC] stream_ptr=0x56101dad6d70, green_ctx=0x56101dab13c0, has_stream=1, has_gc=1, SM=40
+stream[1] [GC] stream_ptr=0x56101dad6ed0, green_ctx=0x56101dabeae0, has_stream=1, has_gc=1, SM=40
+stream[2] [GC] stream_ptr=0x56101dad7030, green_ctx=0x56101dac9560, has_stream=1, has_gc=1, SM=32
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -51,13 +48,17 @@ stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 stream[2] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 =============================================
 [CHECK] all GC streams released
+validation_status: PASS
+validation_checks: 24
+validation_max_abs_error: 3.72529e-09
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  343.878 ms
-task DFG construction:     0.00678 ms
-task levelization:         0.00378 ms
-task assignment:           0.032191 ms
-resource allocation:       0.304771 ms
-gpu_submit_wait_ms:        67.7941 ms
-gpu_kernel_ms:             67.6348 ms
+total_ms:                  335.402 ms
+task DFG construction:     0.00669 ms
+task levelization:         0.00402 ms
+task assignment:           0.01809 ms
+resource allocation:       0.271391 ms
+gpu_submit_wait_ms:        72.4082 ms
+gpu_kernel_ms:             72.2455 ms
 ==================================

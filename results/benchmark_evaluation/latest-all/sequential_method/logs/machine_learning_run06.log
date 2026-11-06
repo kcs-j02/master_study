@@ -6,13 +6,17 @@ sum_proc_time : 775
 workload       : KESCO B6 ML Ensemble
 task_grid      : 64 blocks
 task_SM_limit  : 64 SM
+validation_status: PASS
+validation_checks: 138
+validation_max_abs_error: 1.56462e-07
+validation_detail: deterministic reference samples and pipeline invariants
 mode: sequential
 ========== Bench Result ==========
-total_ms:                  715.238 ms
+total_ms:                  740.907 ms
 task DFG construction:     0 ms
-task levelization:         0.00484 ms
+task levelization:         0.00327 ms
 task assignment:           0 ms
-resource allocation:       251.389 ms
-gpu_submit_wait_ms:        462.009 ms
-gpu_kernel_ms:             461.991 ms
+resource allocation:       280.397 ms
+gpu_submit_wait_ms:        458.61 ms
+gpu_kernel_ms:             458.593 ms
 ==================================

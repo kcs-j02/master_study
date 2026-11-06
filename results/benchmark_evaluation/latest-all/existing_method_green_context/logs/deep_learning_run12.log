@@ -17,10 +17,7 @@ stream[1] SM=56 [GC]
 ===== Existing method + even GC configuration =====
 max_stream_count : 5
 stream_count     : 2
-estimated makespan: 698
-sequential estimated: 786
-estimated speedup    : 1.12607 x
-estimated reduction  : 11.1959 %
+placement policy : INDEX order + predecessor stream
 stream 0 : 56 SM
 stream 1 : 56 SM
 ===== Planned stream load =====
@@ -31,11 +28,11 @@ stream 0 tasks       : 5
 stream 0 busy        : 698
 stream 0 span        : 698
 stream 0 density     : 1
-[GC setup time] 0.255301 ms
+[GC setup time] 0.234211 ms
 
 ===== Runtime Resource State: before GC release =====
-stream[0] [GC] stream_ptr=0x563ab9b1d940, green_ctx=0x563ab9b055a0, has_stream=1, has_gc=1, SM=56
-stream[1] [GC] stream_ptr=0x563ab9b1daa0, green_ctx=0x563ab9b12f40, has_stream=1, has_gc=1, SM=56
+stream[0] [GC] stream_ptr=0x55a006ff3c10, green_ctx=0x55a006fdb940, has_stream=1, has_gc=1, SM=56
+stream[1] [GC] stream_ptr=0x55a006ff3d70, green_ctx=0x55a006fe9210, has_stream=1, has_gc=1, SM=56
 =============================================
 [GC released] stream[0]
 [GC released] stream[1]
@@ -45,13 +42,17 @@ stream[0] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 stream[1] [GC] stream_ptr=0, green_ctx=0, has_stream=0, has_gc=0, SM=0
 =============================================
 [CHECK] all GC streams released
+validation_status: PASS
+validation_checks: 13
+validation_max_abs_error: 0
+validation_detail: deterministic reference samples and pipeline invariants
 mode: existing_method_GC
 ========== Bench Result ==========
-total_ms:                  398.121 ms
-task DFG construction:     0.00643 ms
-task levelization:         0.00265 ms
-task assignment:           0.02192 ms
-resource allocation:       0.267771 ms
-gpu_submit_wait_ms:        121.572 ms
-gpu_kernel_ms:             121.427 ms
+total_ms:                  384.639 ms
+task DFG construction:     0.00377 ms
+task levelization:         0.0011 ms
+task assignment:           0.00393 ms
+resource allocation:       0.242781 ms
+gpu_submit_wait_ms:        121.12 ms
+gpu_kernel_ms:             120.938 ms
 ==================================

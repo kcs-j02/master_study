@@ -7,7 +7,7 @@
 - `existing_method_green_context`
 - `proposed_method`
 
-評価コードはこのフォルダに置き、4手法のアルゴリズムフォルダ内は変更しません。
+評価コードはこのフォルダに置きます。全ベンチマークの入口スクリプトは、評価開始前に4手法の`main.cu`を自動ビルドします。
 
 ## 全ベンチマークを一括評価
 
@@ -15,6 +15,36 @@
 cd /home/kobayashi/main/master_study/benchmarks
 ./run_all_benchmarks.sh
 ```
+
+`run_all_benchmarks.sh`は`nvcc`とTaskflowのincludeディレクトリを確認し、次の4実行ファイルをビルドしてから評価を開始します。
+
+```text
+sequential_method/main
+existing_method/main
+existing_method_green_context/main
+proposed_method/main
+```
+
+既定のCUDAコンパイラとTaskflowのパスは、それぞれ`/usr/local/cuda/bin/nvcc`と`/home/kobayashi/taskflow`です。環境が異なる場合は次のように変更できます。
+
+```bash
+NVCC=/path/to/nvcc \
+TASKFLOW_INC=/path/to/taskflow \
+./run_all_benchmarks.sh
+```
+
+## 比較条件
+
+論文用の標準比較では、4手法で次の条件を共通化しています。
+
+- 同じSTG入力、同じ実CUDAカーネル、同じ入力サイズ、同じGPUを使用
+- 同じCUDAコンパイル条件（`nvcc -O2 -std=c++20`）を使用
+- 各条件を同じ回数実行し、同じ回数のウォームアップを除外
+- `gpu_kernel_ms`を、最初のタスクのCUDA Event開始から最後のタスクのCUDA Event終了までのGPU makespanとして集計
+- Taskflow投入、CPU待機、Context・Stream破棄時間は主指標に含めない
+- 数値検証は測定区間の外で実行し、実行時間へ加えない
+
+方式ごとのStream配置、SM配分、スケジューリング計算は比較対象のアルゴリズム差分です。提案手法だけが短時間処理を特別扱いする適応設定は、標準比較では使用しません。追加の適応最適化を評価する場合は、標準比較とは別の実験として記録してください。
 
 既定では各組合せを33回実行し、先頭3回をウォームアップとして除外します。残り30サンプルについて平均・中央値・標準偏差・95%信頼区間を集計します。
 
@@ -28,16 +58,21 @@ RUNS=20 WARMUP_RUNS=5 ./run_all_benchmarks.sh
 RUNS=2 WARMUP_RUNS=1 ./run_all_benchmarks.sh
 ```
 
-最新の結果は、合成STGとその他のベンチマークに分け、毎回同じ固定パスへ上書き出力します。
+最新の結果は、合成STGとその他のベンチマークに分け、毎回同じ固定パスへ上書き出力します。KESCO由来の実カーネルについては、計測区間外で決定的な参照値・パイプライン不変条件と比較し、全反復の検証結果もCSVへ記録します。
 
 ```text
 ../../results/method_comparison_figures/
+├── correctness_validation.csv
 ├── RESULT_stg/
 │   ├── all_stg_results.csv
 │   └── all_stg_execution_time_comparison.png
-└── result_BENCHMARK/
-    ├── all_benchmark_results.csv
-    └── all_benchmark_execution_time_comparison.png
+├── result_BENCHMARK/
+│   ├── all_benchmark_results.csv
+│   └── all_benchmark_execution_time_comparison.png
+└── sm_utilization/                       # run_sm_utilization.shの出力
+    ├── sm_active_results.csv
+    ├── kesco_sm_active_comparison.png
+    └── stg_sm_active_comparison.png
 ```
 
 `RESULT_stg/`には`benchmarks/STG/`以下の5件、`result_BENCHMARK/`にはそれ以外の実行可能な6件をまとめます。全11件を混在させたグラフは生成しません。
@@ -128,7 +163,9 @@ KESCO由来の6件は、KESCOが比較対象として採用した公式grCUDAベ
 
 ## 評価値
 
-各実行ファイルが出力する`gpu_submit_wait_ms`を収集し、ウォームアップを除いた平均・最小・最大・中央値・標準偏差・95%信頼区間をCSVへ記録します。グラフの棒は平均、エラーバーは平均の95%信頼区間です。
+各実行ファイルが出力する`gpu_kernel_ms`を収集し、ウォームアップを除いた平均・最小・最大・中央値・標準偏差・95%信頼区間をCSVへ記録します。これは最初のタスク開始から最後のタスク終了までのGPU上の実行時間です。グラフの棒は平均、エラーバーは平均の95%信頼区間です。
+
+`validation_status`は、KESCO由来ベンチマークでは全反復の数値検証が成功した場合に`PASS`となります。`validation_checks_per_run`と`max_validation_abs_error`も併記します。合成LIGHT/HEAVYカーネルにはアプリケーション固有の正解値がないため`NOT_APPLICABLE`とします。検証はタイミング計測終了後に実行され、`gpu_kernel_ms`には含まれません。
 
 KESCO由来の6件は、公式grCUDAベンチマークスイートのB1/B5/B6/B7/B8/B10 CUDAカーネルを実行します。合成STGの5件は従来のLIGHT/HEAVY合成CUDAカーネルを実行します。どちらも同じタスクグラフとカーネル入力を4手法で共有し、スケジューリング手法だけを比較します。
 
@@ -139,4 +176,4 @@ cd /home/kobayashi/main/master_study/benchmarks
 ./run_sm_utilization.sh
 ```
 
-結果は`../../results/benchmark_evaluation/latest-sm-active/`にCSVと実カーネル用・STG用の比較グラフとして保存します。
+結果は`../../results/method_comparison_figures/sm_utilization/`にCSV、Nsight Systemsレポート、実カーネル用・STG用の比較グラフとして保存します。

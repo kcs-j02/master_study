@@ -57,7 +57,7 @@ fi
 readonly result_dir
 mkdir -p "$result_dir/logs" "$result_dir/work"
 readonly csv="$result_dir/results.csv"
-printf 'benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,median_gpu_submit_wait_ms,stddev_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,note\n' >"$csv"
+printf 'benchmark,method,status,runs,warmup_runs,validation_status,validation_runs,validation_checks_per_run,max_validation_abs_error,mean_gpu_kernel_ms,min_gpu_kernel_ms,max_gpu_kernel_ms,median_gpu_kernel_ms,stddev_gpu_kernel_ms,ci95_gpu_kernel_ms,note\n' >"$csv"
 
 if (( $# > 0 )); then
   benchmarks=("$@")
@@ -77,7 +77,9 @@ for benchmark in "${benchmarks[@]}"; do
     exit 1
   fi
   values_file="$result_dir/work/$benchmark.values"
+  validation_file="$result_dir/work/$benchmark.validation"
   : >"$values_file"
+  : >"$validation_file"
   echo "[$method] $benchmark ($runs runs, $warmup_runs warmup)" >&2
 
   for ((run = 1; run <= runs; ++run)); do
@@ -92,7 +94,11 @@ for benchmark in "${benchmarks[@]}"; do
       exit 1
     fi
 
-    value="$(awk '$1 == "gpu_submit_wait_ms:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
+    value="$(awk '$1 == "gpu_kernel_ms:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
+    validation_status="$(awk '$1 == "validation_status:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
+    validation_checks="$(awk '$1 == "validation_checks:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
+    validation_error="$(awk '$1 == "validation_max_abs_error:" {v=$2} END {if (v == "") exit 1; print v}' "$log")"
+    printf '%s,%s,%s\n' "$validation_status" "$validation_checks" "$validation_error" >>"$validation_file"
     echo "  run $run/$runs: $value ms" >&2
     if (( run > warmup_runs )); then
       printf '%s\n' "$value" >>"$values_file"
@@ -120,8 +126,23 @@ for benchmark in "${benchmarks[@]}"; do
       printf "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f", mean,min,max,median,stddev,ci95
     }
   ' "$sorted_values_file")"
-  printf '%s,%s,ok,%s,%s,%s,%s\n' \
-    "$benchmark" "$method" "$runs" "$warmup_runs" "$stats" \
+  validation_summary="$(awk -F, -v synthetic="$([[ "$benchmark" == synthetic_* ]] && echo 1 || echo 0)" '
+    BEGIN { status=(synthetic ? "NOT_APPLICABLE" : "PASS"); checks=-1; max_error=0 }
+    {
+      if ((!synthetic && $1 != "PASS") || (synthetic && $1 != "NOT_APPLICABLE")) status="FAIL"
+      if (checks < 0) checks=$2
+      if ($2 != checks) status="FAIL"
+      if (($3+0) > max_error) max_error=$3+0
+    }
+    END { printf "%s,%d,%d,%.12g", status,NR,checks,max_error }
+  ' "$validation_file")"
+  row_status=ok
+  if [[ "$validation_summary" == FAIL,* ]]; then
+    row_status=validation_failed
+  fi
+  printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    "$benchmark" "$method" "$row_status" "$runs" "$warmup_runs" \
+    "$validation_summary" "$stats" \
     'shared task-graph benchmark input' >>"$csv"
 done
 

@@ -1,12 +1,12 @@
-benchmark,method,status,runs,warmup_runs,mean_gpu_submit_wait_ms,min_gpu_submit_wait_ms,max_gpu_submit_wait_ms,median_gpu_submit_wait_ms,stddev_gpu_submit_wait_ms,ci95_gpu_submit_wait_ms,note
-vector_square,existing_method,ok,33,3,68.920923,68.810100,69.009600,68.920450,0.050437,0.018834,shared task-graph benchmark input
-black_scholes,existing_method,ok,33,3,2.108482,1.994720,2.263100,2.102995,0.066841,0.024959,shared task-graph benchmark input
-machine_learning,existing_method,ok,33,3,463.655867,458.651000,469.123000,463.339000,2.496783,0.932313,shared task-graph benchmark input
-hits,existing_method,ok,33,3,165.929367,161.333000,182.203000,166.348500,3.677523,1.373208,shared task-graph benchmark input
-image_processing,existing_method,ok,33,3,64.866920,62.527900,68.754900,63.963100,2.020255,0.754375,shared task-graph benchmark input
-deep_learning,existing_method,ok,33,3,126.750767,121.440000,199.541000,121.556500,19.781093,7.386373,shared task-graph benchmark input
-synthetic_fully_parallel,existing_method,ok,33,3,108.473733,107.956000,109.914000,108.387000,0.460062,0.171790,shared task-graph benchmark input
-synthetic_mixed_chain_parallel,existing_method,ok,33,3,278.720100,277.958000,280.101000,278.713500,0.407268,0.152076,shared task-graph benchmark input
-synthetic_multiple_long_branches,existing_method,ok,33,3,129.797767,127.744000,132.472000,129.820000,1.020888,0.381206,shared task-graph benchmark input
-synthetic_random_dag,existing_method,ok,33,3,220.531000,217.869000,223.123000,220.819500,1.175540,0.438953,shared task-graph benchmark input
-synthetic_sequential_chain,existing_method,ok,33,3,396.907333,396.394000,397.355000,396.874500,0.267413,0.099853,shared task-graph benchmark input
+benchmark,method,status,runs,warmup_runs,validation_status,validation_runs,validation_checks_per_run,max_validation_abs_error,mean_gpu_kernel_ms,min_gpu_kernel_ms,max_gpu_kernel_ms,median_gpu_kernel_ms,stddev_gpu_kernel_ms,ci95_gpu_kernel_ms,note
+vector_square,existing_method,ok,33,3,PASS,33,12,0,68.665117,68.569200,68.756800,68.667050,0.052773,0.019706,shared task-graph benchmark input
+black_scholes,existing_method,ok,33,3,PASS,33,60,2.77556e-17,1.834920,1.719230,1.936320,1.833040,0.046445,0.017343,shared task-graph benchmark input
+machine_learning,existing_method,ok,33,3,PASS,33,138,1.56462e-07,461.367100,457.418000,466.556000,460.712500,2.396152,0.894737,shared task-graph benchmark input
+hits,existing_method,validation_failed,33,3,FAIL,33,20,8.70228e-06,291.929167,285.942000,306.974000,291.044500,4.172862,1.558171,shared task-graph benchmark input
+image_processing,existing_method,ok,33,3,PASS,33,24,3.72529e-09,71.109310,62.529900,75.367600,71.655750,3.199992,1.194895,shared task-graph benchmark input
+deep_learning,existing_method,ok,33,3,PASS,33,13,0,128.584133,120.651000,198.881000,120.818000,23.684925,8.844087,shared task-graph benchmark input
+synthetic_fully_parallel,existing_method,ok,33,3,NOT_APPLICABLE,33,0,0,394.121133,393.430000,395.228000,394.066500,0.375185,0.140096,shared task-graph benchmark input
+synthetic_mixed_chain_parallel,existing_method,ok,33,3,NOT_APPLICABLE,33,0,0,394.273967,393.312000,395.602000,394.178000,0.571056,0.213235,shared task-graph benchmark input
+synthetic_multiple_long_branches,existing_method,ok,33,3,NOT_APPLICABLE,33,0,0,394.241767,393.495000,395.319000,394.082000,0.507703,0.189579,shared task-graph benchmark input
+synthetic_random_dag,existing_method,ok,33,3,NOT_APPLICABLE,33,0,0,763.325900,762.525000,764.531000,763.254500,0.574395,0.214482,shared task-graph benchmark input
+synthetic_sequential_chain,existing_method,ok,33,3,NOT_APPLICABLE,33,0,0,394.060567,393.501000,395.067000,393.986000,0.420741,0.157107,shared task-graph benchmark input

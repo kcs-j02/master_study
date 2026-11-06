@@ -7,13 +7,17 @@ workload       : synthetic LIGHT/HEAVY
 task_grid     : 64 blocks
 task_SM_limit : 64 SM
 [normal stream setup] 4 streams, no Green Context
+validation_status: NOT_APPLICABLE
+validation_checks: 0
+validation_max_abs_error: 0
+validation_detail: synthetic workload has no application reference result
 mode: existing_method
 ========== Bench Result ==========
-total_ms:                  398.408 ms
-task DFG construction:     0.05654 ms
-task levelization:         0.11614 ms
-task assignment:           0.257421 ms
-resource allocation:       0.132951 ms
-gpu_submit_wait_ms:        129.915 ms
-gpu_kernel_ms:             129.78 ms
+total_ms:                  680.08 ms
+task DFG construction:     0.13146 ms
+task levelization:         0.197311 ms
+task assignment:           0.107871 ms
+resource allocation:       0.129561 ms
+gpu_submit_wait_ms:        394.563 ms
+gpu_kernel_ms:             394.422 ms
 ==================================

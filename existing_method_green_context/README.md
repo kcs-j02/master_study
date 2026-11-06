@@ -4,6 +4,8 @@
 比較評価用コードである。
 
 - タスク選択・stream数決定・stream割り当ては既存手法と同じ。
+- bottom levelによる重要度付けは行わない。
+- ready-listをタスクINDEX順に処理し、依存元があるタスクはそのstreamへ配置する。
 - タスクのstream割り当てを確定してからGCのSMを均等配分する。
 - GCのSM配分結果を使ったタスクの再割り当ては行わない。
 - stream 0を含む全実行streamをGreen Context上に作成する。

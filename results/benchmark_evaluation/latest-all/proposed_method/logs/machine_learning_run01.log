@@ -22,65 +22,63 @@ task 9 : importance=2
 
 ===== All SM allocation candidates =====
 smaller estimated makespan is better
-Stream=1 SM=           [114] estimated_makespan=775  <-- BEST FOR 1 STREAM
-Stream=2 SM=         [66,48] estimated_makespan=584  <-- BEST FOR 2 STREAM
-Stream=3 SM=      [66,32,16] estimated_makespan=584  <-- BEST FOR 3 STREAM
-Stream=4 SM=   [34,24,24,32] estimated_makespan=966  <-- BEST FOR 4 STREAM
-Stream=5 SM=   [66,24,8,8,8] estimated_makespan=876  <-- BEST FOR 5 STREAM
+Stream=1 SM=           [114] estimated_makespan=461.61  <-- BEST FOR 1 STREAM
+Stream=2 SM=         [18,96] estimated_makespan=422.473  <-- BEST FOR 2 STREAM
+Stream=3 SM=      [18,72,24] estimated_makespan=422.473  <-- BEST FOR 3 STREAM
+Stream=4 SM=   [18,64,16,16] estimated_makespan=422.473  <-- BEST FOR 4 STREAM
+Stream=5 SM=  [18,64,8,8,16] estimated_makespan=422.473  <-- BEST FOR 5 STREAM
 
 ===== Best result for each Stream count =====
-Stream=1 SM=           [114] estimated_makespan=775
-Stream=2 SM=         [66,48] estimated_makespan=584  <-- SELECTED
-Stream=3 SM=      [66,32,16] estimated_makespan=584
-Stream=4 SM=   [34,24,24,32] estimated_makespan=966
-Stream=5 SM=   [66,24,8,8,8] estimated_makespan=876
+Stream=1 SM=           [114] estimated_makespan=461.61
+Stream=2 SM=         [18,96] estimated_makespan=422.473  <-- SELECTED
+Stream=3 SM=      [18,72,24] estimated_makespan=422.473
+Stream=4 SM=   [18,64,16,16] estimated_makespan=422.473
+Stream=5 SM=  [18,64,8,8,16] estimated_makespan=422.473
 =============================================
 
 ===== Proposed configuration =====
 max_stream_count   : 5
 stream_count       : 2
-selected SM        : [66,48]
-estimated makespan : 584
-sequential estimate: 775
-estimated speedup  : 1.32705 x
-estimated reduction: 24.6452 %
-[GC setup] selected SM allocation: 66 / 48
+selected SM        : [18,96]
+prediction unit    : ms (offline profile)
+estimated makespan : 422.473
+sequential estimate: 461.61
+estimated speedup  : 1.09264 x
+estimated reduction: 8.47836 %
+[GC setup] selected SM allocation: 18 / 96
 
 ===== Runtime Resource State: initial =====
-stream[0] [normal] SM=66, stream=0x55ddb0e15070, green_ctx=0
-stream[1] [GC] SM=48, stream=0x55ddb0e14f10, green_ctx=0x55ddb0e077f0
+stream[0] [normal] SM=18, stream=0x55daaf3d21d0, green_ctx=0
+stream[1] [GC] SM=96, stream=0x55daaf3d2070, green_ctx=0x55daaf3c4950
 =============================================
-[normal launch] task=1, SM=66, blocks=64, threads/block=256
-[normal launch] task=3, SM=66, blocks=64, threads/block=256
-[normal launch] task=4, SM=66, blocks=64, threads/block=256
-[normal launch] task=6, SM=66, blocks=64, threads/block=256
-[normal launch] task=7, SM=66, blocks=64, threads/block=256
-[GC last task completed] stream=1, task=8
-[GC released] stream[1], returned SM=48, current normal SM=114
-[normal launch] task=9, SM=114, blocks=64, threads/block=256
+[GC released] stream[1], returned SM=96, current normal SM=114
 
 ===== Runtime Resource State: after dynamic GC release =====
-stream[0] [normal] SM=114, stream=0x55ddb0e15070, green_ctx=0
+stream[0] [normal] SM=114, stream=0x55daaf3d21d0, green_ctx=0
 stream[1] [GC] SM=0, stream=0, green_ctx=0
 =============================================
 [CHECK] all GC streams released
 [CHECK] final normal SM=114
+validation_status: PASS
+validation_checks: 138
+validation_max_abs_error: 1.56462e-07
+validation_detail: deterministic reference samples and pipeline invariants
 stream comparison CSV: stream_plots/machine_learning_stream_makespan.csv
 mode: proposed
 ===== Proposed Method Stage Times [seconds] =====
-stage_1_stg_analysis_seconds: 0.000071490 s
-stage_2_task_importance_seconds: 0.000008370 s
-stage_3_stream_placement_seconds: 0.000029950 s
-stage_4_sm_allocation_seconds: 0.000308111 s
-stage_5_green_context_execution_seconds: 0.479925376 s
+stage_1_stg_analysis_seconds: 0.000116781 s
+stage_2_task_importance_seconds: 0.000014320 s
+stage_3_stream_placement_seconds: 0.000064370 s
+stage_4_sm_allocation_seconds: 0.000806313 s
+stage_5_green_context_execution_seconds: 0.468334863 s
 =================================================
 ========== Bench Result ==========
-total_ms:                  734.07 ms
-stage 1 STG analysis:      0.07149 ms
-stage 2 task importance:   0.00837 ms
-stage 3 stream placement:  0.02995 ms
-stage 4 SM allocation:     0.308111 ms
-stage 5 GC execution:      479.925 ms
-gpu_submit_wait_ms:        473.409 ms
-gpu_kernel_ms:             473.244 ms
+total_ms:                  710.387 ms
+stage 1 STG analysis:      0.116781 ms
+stage 2 task importance:   0.01432 ms
+stage 3 stream placement:  0.06437 ms
+stage 4 SM allocation:     0.806313 ms
+stage 5 GC execution:      468.335 ms
+gpu_submit_wait_ms:        461.709 ms
+gpu_kernel_ms:             461.544 ms
 ==================================

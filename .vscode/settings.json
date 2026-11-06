@@ -1,0 +1,11 @@
+{
+  "markdown.marp.browser": "chrome",
+  "markdown.marp.browserPath": "/home/kobayashi/.cache/marp-browser/chrome/linux-157.0.8103.38/chrome-linux64/chrome",
+  "markdown.marp.breaks": "on",
+  "markdown.marp.html": "all",
+  "markdown.marp.exportType": "pdf",
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.latex.recipe.default": "latexmk (lualatex)",
+  "latex-workshop.latex.outDir": "%DIR%",
+  "latex-workshop.view.pdf.viewer": "tab"
+}
